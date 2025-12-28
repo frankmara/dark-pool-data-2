@@ -25,7 +25,8 @@ import {
   TrendingDown,
   Minus,
   Zap,
-  Clock
+  Clock,
+  FileDown
 } from "lucide-react";
 import {
   Select,
@@ -445,6 +446,16 @@ export default function TestFeed() {
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Clear Feed
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              onClick={() => window.print()}
+              disabled={posts.length === 0}
+              data-testid="button-export-pdf"
+            >
+              <FileDown className="w-4 h-4 mr-2" />
+              Export PDF
             </Button>
             
             <div className="ml-auto text-sm text-muted-foreground">

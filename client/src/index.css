@@ -317,3 +317,65 @@
     inset: -1px;
   }
 }
+
+
+/* Print styles for PDF export */
+@media print {
+  /* Hide sidebar, header, and navigation */
+  [data-sidebar],
+  header,
+  nav,
+  .sidebar,
+  button,
+  [data-testid="button-sidebar-toggle"],
+  [data-testid="button-generate-post"],
+  [data-testid="button-clear-feed"],
+  [data-testid="button-export-pdf"],
+  [data-testid="switch-auto-generate"],
+  [data-testid="select-interval"] {
+    display: none !important;
+  }
+  
+  /* Full width content */
+  main {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Remove dark theme for print */
+  body,
+  .dark {
+    background: white !important;
+    color: black !important;
+  }
+  
+  /* Make cards print-friendly */
+  [class*="card"],
+  [class*="Card"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  /* Show SVG charts properly */
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  
+  /* Ensure text is readable */
+  * {
+    color: black !important;
+    background: white !important;
+  }
+  
+  /* Keep chart backgrounds */
+  svg rect,
+  svg path {
+    color: inherit !important;
+  }
+}
+
