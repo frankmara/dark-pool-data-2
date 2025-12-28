@@ -30,6 +30,127 @@ const scannerConfigUpdateSchema = z.object({
   lastRun: z.string().nullable().optional(),
 }).strict();
 
+async function testProviderConnection(provider: string): Promise<{ success: boolean; message: string }> {
+  try {
+    switch (provider) {
+      case "unusual_whales": {
+        const apiKey = process.env.UNUSUAL_WHALES_API_KEY;
+        if (!apiKey) {
+          return { success: false, message: "Missing UNUSUAL_WHALES_API_KEY" };
+        }
+        const response = await fetch("https://api.unusualwhales.com/api/stock/AAPL/quote", {
+          headers: { "Authorization": `Bearer ${apiKey}` }
+        });
+        if (response.status === 401 || response.status === 403) {
+          return { success: false, message: "Invalid API key" };
+        }
+        if (!response.ok) {
+          return { success: false, message: `API error: ${response.status}` };
+        }
+        return { success: true, message: "Unusual Whales connected successfully" };
+      }
+
+      case "twitter": {
+        const clientId = process.env.TWITTER_CLIENT_ID;
+        const clientSecret = process.env.TWITTER_CLIENT_SECRET;
+        if (!clientId || !clientSecret) {
+          return { success: false, message: "Missing TWITTER_CLIENT_ID or TWITTER_CLIENT_SECRET" };
+        }
+        const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+        const response = await fetch("https://api.twitter.com/2/tweets/search/recent?query=test&max_results=10", {
+          headers: { "Authorization": `Bearer ${credentials}` }
+        });
+        if (response.status === 401 || response.status === 403) {
+          const tokenResponse = await fetch("https://api.twitter.com/oauth2/token", {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${credentials}`,
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: "grant_type=client_credentials"
+          });
+          if (!tokenResponse.ok) {
+            return { success: false, message: "Invalid Twitter credentials" };
+          }
+          return { success: true, message: "Twitter/X connected successfully" };
+        }
+        return { success: true, message: "Twitter/X connected successfully" };
+      }
+
+      case "polygon": {
+        const apiKey = process.env.POLYGON_API_KEY;
+        if (!apiKey) {
+          return { success: false, message: "Missing POLYGON_API_KEY" };
+        }
+        const response = await fetch(`https://api.polygon.io/v3/reference/tickers?active=true&limit=1&apiKey=${apiKey}`);
+        if (response.status === 401 || response.status === 403) {
+          return { success: false, message: "Invalid API key" };
+        }
+        if (!response.ok) {
+          return { success: false, message: `API error: ${response.status}` };
+        }
+        return { success: true, message: "Polygon.io connected successfully" };
+      }
+
+      case "alpha_vantage": {
+        const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+        if (!apiKey) {
+          return { success: false, message: "Missing ALPHA_VANTAGE_API_KEY" };
+        }
+        const response = await fetch(`https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=IBM&interval=5min&apikey=${apiKey}`);
+        if (!response.ok) {
+          return { success: false, message: `API error: ${response.status}` };
+        }
+        const data = await response.json();
+        if (data.Note && data.Note.includes("API call frequency")) {
+          return { success: true, message: "Alpha Vantage connected (rate limited)" };
+        }
+        if (data["Error Message"]) {
+          return { success: false, message: "Invalid API key" };
+        }
+        return { success: true, message: "Alpha Vantage connected successfully" };
+      }
+
+      case "fmp": {
+        const apiKey = process.env.FMP_API_KEY;
+        if (!apiKey) {
+          return { success: false, message: "Missing FMP_API_KEY" };
+        }
+        const response = await fetch(`https://financialmodelingprep.com/api/v3/profile/AAPL?apikey=${apiKey}`);
+        if (response.status === 401 || response.status === 403) {
+          return { success: false, message: "Invalid API key" };
+        }
+        if (!response.ok) {
+          return { success: false, message: `API error: ${response.status}` };
+        }
+        return { success: true, message: "FMP connected successfully" };
+      }
+
+      case "sec_edgar": {
+        const userAgent = process.env.SEC_EDGAR_USER_AGENT;
+        if (!userAgent) {
+          return { success: false, message: "Missing SEC_EDGAR_USER_AGENT" };
+        }
+        const response = await fetch("https://data.sec.gov/submissions/CIK0000320193.json", {
+          headers: { "User-Agent": userAgent }
+        });
+        if (response.status === 403) {
+          return { success: false, message: "Invalid User-Agent format (use: email@domain.com)" };
+        }
+        if (!response.ok) {
+          return { success: false, message: `API error: ${response.status}` };
+        }
+        return { success: true, message: "SEC EDGAR connected successfully" };
+      }
+
+      default:
+        return { success: false, message: `Unknown provider: ${provider}` };
+    }
+  } catch (error) {
+    return { success: false, message: `Connection error: ${error instanceof Error ? error.message : 'Unknown error'}` };
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -149,31 +270,18 @@ export async function registerRoutes(
       }
 
       const provider = connector.provider;
-      const apiKeyEnvVar = getApiKeyEnvVar(provider || "");
-      const hasApiKey = !!process.env[apiKeyEnvVar];
-
-      if (!hasApiKey) {
-        await storage.updateApiConnector(req.params.id, { 
-          status: "disconnected",
-          lastError: `Missing API key: ${apiKeyEnvVar}`
-        });
-        return res.json({ 
-          success: false, 
-          message: `API key not configured. Please set ${apiKeyEnvVar} in secrets.`,
-          envVar: apiKeyEnvVar 
-        });
-      }
-
+      const testResult = await testProviderConnection(provider || "");
+      
       await storage.updateApiConnector(req.params.id, { 
-        status: "connected",
-        lastSync: new Date().toISOString(),
-        lastError: null
+        status: testResult.success ? "connected" : "disconnected",
+        lastSync: testResult.success ? new Date().toISOString() : connector.lastSync,
+        lastError: testResult.success ? null : testResult.message
       });
 
       res.json({ 
-        success: true, 
-        message: `${connector.name} connected successfully`,
-        status: "connected"
+        success: testResult.success, 
+        message: testResult.message,
+        status: testResult.success ? "connected" : "disconnected"
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to test connector" });
