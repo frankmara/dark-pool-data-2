@@ -278,6 +278,20 @@ export const testPosts = pgTable("test_posts", {
   chartSvg: text("chart_svg"), // TradingView-style chart SVG
   flowSummarySvg: text("flow_summary_svg"), // Flow summary card SVG
   isLiveData: boolean("is_live_data").default(false), // Whether this used live API data
+  // Original analytics charts
+  volatilitySmileSvg: text("volatility_smile_svg"),
+  optionsFlowHeatmapSvg: text("options_flow_heatmap_svg"),
+  putCallOILadderSvg: text("put_call_oi_ladder_svg"),
+  ivTermStructureSvg: text("iv_term_structure_svg"),
+  // 8 NEW institutional charts
+  gammaExposureSvg: text("gamma_exposure_svg"),
+  historicalVsImpliedVolSvg: text("historical_vs_implied_vol_svg"),
+  greeksSurfaceSvg: text("greeks_surface_svg"),
+  tradeTapeTimelineSvg: text("trade_tape_timeline_svg"),
+  sectorCorrelationSvg: text("sector_correlation_svg"),
+  maxPainSvg: text("max_pain_svg"),
+  ivRankHistogramSvg: text("iv_rank_histogram_svg"),
+  optionsStockVolumeSvg: text("options_stock_volume_svg"),
 });
 
 export const insertTestPostSchema = createInsertSchema(testPosts).omit({ id: true });
