@@ -38,14 +38,28 @@ async function testProviderConnection(provider: string): Promise<{ success: bool
         if (!apiKey) {
           return { success: false, message: "Missing UNUSUAL_WHALES_API_KEY" };
         }
-        const response = await fetch("https://api.unusualwhales.com/api/stock/AAPL/quote", {
-          headers: { "Authorization": `Bearer ${apiKey}` }
+        const response = await fetch("https://api.unusualwhales.com/api/market/overview", {
+          headers: { 
+            "Authorization": `Bearer ${apiKey}`,
+            "Accept": "application/json"
+          }
         });
         if (response.status === 401 || response.status === 403) {
-          return { success: false, message: "Invalid API key" };
+          return { success: false, message: "Invalid API key or insufficient permissions" };
         }
         if (!response.ok) {
-          return { success: false, message: `API error: ${response.status}` };
+          const altResponse = await fetch("https://api.unusualwhales.com/api/darkpool/recent?limit=1", {
+            headers: { 
+              "Authorization": `Bearer ${apiKey}`,
+              "Accept": "application/json"
+            }
+          });
+          if (altResponse.status === 401 || altResponse.status === 403) {
+            return { success: false, message: "Invalid API key or insufficient permissions" };
+          }
+          if (!altResponse.ok) {
+            return { success: false, message: `API error: ${altResponse.status}` };
+          }
         }
         return { success: true, message: "Unusual Whales connected successfully" };
       }
@@ -57,22 +71,27 @@ async function testProviderConnection(provider: string): Promise<{ success: bool
           return { success: false, message: "Missing TWITTER_CLIENT_ID or TWITTER_CLIENT_SECRET" };
         }
         const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-        const response = await fetch("https://api.twitter.com/2/tweets/search/recent?query=test&max_results=10", {
-          headers: { "Authorization": `Bearer ${credentials}` }
+        const tokenResponse = await fetch("https://api.twitter.com/oauth2/token", {
+          method: "POST",
+          headers: {
+            "Authorization": `Basic ${credentials}`,
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: "grant_type=client_credentials"
         });
-        if (response.status === 401 || response.status === 403) {
-          const tokenResponse = await fetch("https://api.twitter.com/oauth2/token", {
-            method: "POST",
-            headers: {
-              "Authorization": `Basic ${credentials}`,
-              "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body: "grant_type=client_credentials"
-          });
-          if (!tokenResponse.ok) {
-            return { success: false, message: "Invalid Twitter credentials" };
-          }
-          return { success: true, message: "Twitter/X connected successfully" };
+        if (!tokenResponse.ok) {
+          const errorText = await tokenResponse.text();
+          return { success: false, message: `Twitter auth failed: ${tokenResponse.status} - Check credentials and app permissions` };
+        }
+        const tokenData = await tokenResponse.json() as { access_token?: string };
+        if (!tokenData.access_token) {
+          return { success: false, message: "Twitter did not return access token" };
+        }
+        const verifyResponse = await fetch("https://api.twitter.com/2/users/me", {
+          headers: { "Authorization": `Bearer ${tokenData.access_token}` }
+        });
+        if (!verifyResponse.ok) {
+          return { success: false, message: `Twitter API verification failed: ${verifyResponse.status}` };
         }
         return { success: true, message: "Twitter/X connected successfully" };
       }
@@ -294,11 +313,14 @@ export async function registerRoutes(
       const connectors = await storage.getApiConnectors();
       const keyStatus = connectors.map(c => {
         const envVar = getApiKeyEnvVar(c.provider || "");
+        const isTwitter = c.provider === "twitter";
         return {
           provider: c.provider,
           name: c.name,
-          envVar,
-          configured: !!process.env[envVar],
+          envVar: isTwitter ? "TWITTER_CLIENT_ID & TWITTER_CLIENT_SECRET" : envVar,
+          configured: isTwitter 
+            ? !!(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET)
+            : !!process.env[envVar],
           status: c.status
         };
       });
@@ -572,11 +594,15 @@ export async function registerRoutes(
 function getApiKeyEnvVar(provider: string): string {
   const envVarMap: Record<string, string> = {
     "unusual_whales": "UNUSUAL_WHALES_API_KEY",
-    "twitter": "TWITTER_API_KEY",
+    "twitter": "TWITTER_CLIENT_ID",
     "polygon": "POLYGON_API_KEY",
     "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
     "fmp": "FMP_API_KEY",
     "sec_edgar": "SEC_EDGAR_USER_AGENT",
   };
   return envVarMap[provider] || `${provider.toUpperCase()}_API_KEY`;
+}
+
+function getTwitterConfigured(): boolean {
+  return !!(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET);
 }
