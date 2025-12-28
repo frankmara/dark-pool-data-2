@@ -19,6 +19,7 @@ A fully automated workstation for institutional-grade dark pool and unusual opti
 │   │   ├── post-constructor.tsx  # Post Constructor & A/B Lab
 │   │   ├── data-feeds.tsx        # Data Feeds & API Connectors
 │   │   ├── workflow-canvas.tsx   # Visual Workflow Canvas
+│   │   ├── ops-center.tsx        # Operations Center (logs & monitoring)
 │   │   ├── settings.tsx          # Settings page
 │   │   └── help.tsx              # Help center
 │   ├── App.tsx             # Main app with routing and state
@@ -121,6 +122,53 @@ A visualization node that generates 2 images for every thread:
 
 **Output:** Chart attaches to Tweet 1, Summary Card attaches to Tweet 2 or 3
 
+### 9. Operations Center
+A centralized monitoring and logging dashboard for system health and event tracking.
+
+**Features:**
+- Filterable system event log (last 100 events)
+- Component status filtering (Scanner, LLM Agent, Chart Gen, Poster)
+- Status filtering (success, warning, error)
+- Timestamp, component, and message display
+- Real-time refresh capability
+
+### 10. Health Status Widget
+Added to Live Automations Dashboard for at-a-glance system monitoring.
+
+**Indicators:**
+- Scanner: Green/Yellow/Red status
+- LLM Agent: Green/Yellow/Red status
+- Chart Gen: Green/Yellow/Red status
+- Poster: Green/Yellow/Red status
+
+### 11. Notification & Alerting System
+Enhanced Settings page with channel and alert management.
+
+**Notification Channels:**
+- Email notifications
+- SMS notifications
+- Discord webhooks
+- Add/delete channel management
+
+**Alert Rules:**
+- High-conviction missed posts
+- Follower drop alerts (threshold-based)
+- Low engagement velocity alerts
+- API key expiry warnings
+
+### 12. Global Error Handler & Fallback Logic Nodes
+Workflow utility nodes for resilient automation.
+
+**Error Handler:**
+- Max retries configuration
+- Retry delay settings
+- Fallback routing
+
+**Fallback Logic:**
+- Primary/secondary/tertiary source routing
+- Auto-switch on failure
+- Source priority: UW -> Polygon -> Alpha Vantage
+
 ## Design System
 - **Theme**: Dark finance professional (deep navy blues, blacks)
 - **Colors**: 
@@ -139,6 +187,10 @@ A visualization node that generates 2 images for every thread:
 - `GET/POST/PATCH/DELETE /api/workflow/nodes` - Workflow nodes
 - `GET/POST/DELETE /api/workflow/connections` - Node connections
 - `GET/POST /api/analytics` - Analytics data
+- `GET/POST /api/logs` - System logs
+- `GET/POST/DELETE /api/notifications/channels` - Notification channels
+- `GET/POST/PATCH /api/notifications/alerts` - Alert rules
+- `GET/PATCH /api/health` - Health snapshots
 
 ## Running the Project
 The application runs on port 5000 with `npm run dev`. The Express server handles both the API and serves the Vite frontend.
