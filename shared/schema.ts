@@ -262,3 +262,34 @@ export const healthSnapshots = pgTable("health_snapshots", {
 export const insertHealthSnapshotSchema = createInsertSchema(healthSnapshots).omit({ id: true });
 export type InsertHealthSnapshot = z.infer<typeof insertHealthSnapshotSchema>;
 export type HealthSnapshot = typeof healthSnapshots.$inferSelect;
+
+// Test Posts Schema - for preview mode (never posted)
+export const testPosts = pgTable("test_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticker: varchar("ticker", { length: 10 }).notNull(),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  thread: jsonb("thread").notNull(), // Array of tweet objects
+  variant: varchar("variant", { length: 20 }).default("neutral"),
+  conviction: varchar("conviction", { length: 20 }).default("medium"),
+  sourceEvent: jsonb("source_event"),
+  generatedAt: text("generated_at").notNull(),
+  sentiment: varchar("sentiment", { length: 20 }),
+  engagement: jsonb("engagement"), // Simulated engagement data
+});
+
+export const insertTestPostSchema = createInsertSchema(testPosts).omit({ id: true });
+export type InsertTestPost = z.infer<typeof insertTestPostSchema>;
+export type TestPost = typeof testPosts.$inferSelect;
+
+// Test Mode Settings Schema
+export const testModeSettings = pgTable("test_mode_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  enabled: boolean("enabled").default(false),
+  intervalMinutes: integer("interval_minutes").default(30),
+  lastGenerated: text("last_generated"),
+  autoGenerate: boolean("auto_generate").default(false),
+});
+
+export const insertTestModeSettingsSchema = createInsertSchema(testModeSettings).omit({ id: true });
+export type InsertTestModeSettings = z.infer<typeof insertTestModeSettingsSchema>;
+export type TestModeSettings = typeof testModeSettings.$inferSelect;

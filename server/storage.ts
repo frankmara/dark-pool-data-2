@@ -14,6 +14,8 @@ import {
   type NotificationChannel, type InsertNotificationChannel,
   type AlertRule, type InsertAlertRule,
   type HealthSnapshot, type InsertHealthSnapshot,
+  type TestPost, type InsertTestPost,
+  type TestModeSettings, type InsertTestModeSettings,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -76,6 +78,13 @@ export interface IStorage {
 
   getHealthSnapshots(): Promise<HealthSnapshot[]>;
   updateHealthSnapshot(component: string, snapshot: Partial<InsertHealthSnapshot>): Promise<HealthSnapshot>;
+
+  getTestPosts(limit?: number): Promise<TestPost[]>;
+  createTestPost(post: InsertTestPost): Promise<TestPost>;
+  clearTestPosts(): Promise<void>;
+
+  getTestModeSettings(): Promise<TestModeSettings | undefined>;
+  updateTestModeSettings(settings: Partial<InsertTestModeSettings>): Promise<TestModeSettings>;
 }
 
 export class MemStorage implements IStorage {
@@ -94,6 +103,8 @@ export class MemStorage implements IStorage {
   private notificationChannels: Map<string, NotificationChannel>;
   private alertRules: Map<string, AlertRule>;
   private healthSnapshots: Map<string, HealthSnapshot>;
+  private testPosts: Map<string, TestPost>;
+  private testModeSettings: TestModeSettings | undefined;
 
   constructor() {
     this.users = new Map();
@@ -109,6 +120,7 @@ export class MemStorage implements IStorage {
     this.notificationChannels = new Map();
     this.alertRules = new Map();
     this.healthSnapshots = new Map();
+    this.testPosts = new Map();
     
     this.seedData();
   }
@@ -739,6 +751,42 @@ export class MemStorage implements IStorage {
     };
     this.healthSnapshots.set(component, newSnapshot);
     return newSnapshot;
+  }
+
+  async getTestPosts(limit: number = 50): Promise<TestPost[]> {
+    const posts = Array.from(this.testPosts.values());
+    posts.sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+    return posts.slice(0, limit);
+  }
+
+  async createTestPost(post: InsertTestPost): Promise<TestPost> {
+    const id = randomUUID();
+    const newPost: TestPost = { id, ...post };
+    this.testPosts.set(id, newPost);
+    return newPost;
+  }
+
+  async clearTestPosts(): Promise<void> {
+    this.testPosts.clear();
+  }
+
+  async getTestModeSettings(): Promise<TestModeSettings | undefined> {
+    return this.testModeSettings;
+  }
+
+  async updateTestModeSettings(settings: Partial<InsertTestModeSettings>): Promise<TestModeSettings> {
+    if (!this.testModeSettings) {
+      this.testModeSettings = {
+        id: randomUUID(),
+        enabled: settings.enabled ?? false,
+        intervalMinutes: settings.intervalMinutes ?? 30,
+        lastGenerated: settings.lastGenerated ?? null,
+        autoGenerate: settings.autoGenerate ?? false,
+      };
+    } else {
+      this.testModeSettings = { ...this.testModeSettings, ...settings };
+    }
+    return this.testModeSettings;
   }
 }
 
