@@ -1,20 +1,160 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { 
+  type User, type InsertUser,
+  type AutomationSettings, type InsertAutomationSettings,
+  type Post, type InsertPost,
+  type DarkPoolData, type InsertDarkPoolData,
+  type UnusualOptions, type InsertUnusualOptions,
+  type WorkflowNode, type InsertWorkflowNode,
+  type WorkflowConnection, type InsertWorkflowConnection,
+  type ApiConnector, type InsertApiConnector,
+  type AnalyticsData, type InsertAnalyticsData,
+} from "@shared/schema";
 import { randomUUID } from "crypto";
 
-// modify the interface with any CRUD methods
-// you might need
-
 export interface IStorage {
+  // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  
+  // Automation Settings
+  getAutomationSettings(): Promise<AutomationSettings | undefined>;
+  updateAutomationSettings(settings: Partial<InsertAutomationSettings>): Promise<AutomationSettings>;
+  
+  // Posts
+  getPosts(): Promise<Post[]>;
+  getPost(id: string): Promise<Post | undefined>;
+  createPost(post: InsertPost): Promise<Post>;
+  updatePost(id: string, post: Partial<InsertPost>): Promise<Post | undefined>;
+  deletePost(id: string): Promise<boolean>;
+  
+  // Dark Pool Data
+  getDarkPoolData(): Promise<DarkPoolData[]>;
+  createDarkPoolData(data: InsertDarkPoolData): Promise<DarkPoolData>;
+  
+  // Unusual Options
+  getUnusualOptions(): Promise<UnusualOptions[]>;
+  createUnusualOptions(data: InsertUnusualOptions): Promise<UnusualOptions>;
+  
+  // Workflow Nodes
+  getWorkflowNodes(): Promise<WorkflowNode[]>;
+  createWorkflowNode(node: InsertWorkflowNode): Promise<WorkflowNode>;
+  updateWorkflowNode(id: string, node: Partial<InsertWorkflowNode>): Promise<WorkflowNode | undefined>;
+  deleteWorkflowNode(id: string): Promise<boolean>;
+  
+  // Workflow Connections
+  getWorkflowConnections(): Promise<WorkflowConnection[]>;
+  createWorkflowConnection(connection: InsertWorkflowConnection): Promise<WorkflowConnection>;
+  deleteWorkflowConnection(id: string): Promise<boolean>;
+  
+  // API Connectors
+  getApiConnectors(): Promise<ApiConnector[]>;
+  getApiConnector(id: string): Promise<ApiConnector | undefined>;
+  createApiConnector(connector: InsertApiConnector): Promise<ApiConnector>;
+  updateApiConnector(id: string, connector: Partial<InsertApiConnector>): Promise<ApiConnector | undefined>;
+  
+  // Analytics Data
+  getAnalyticsData(period?: string): Promise<AnalyticsData[]>;
+  createAnalyticsData(data: InsertAnalyticsData): Promise<AnalyticsData>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
+  private automationSettings: AutomationSettings | undefined;
+  private posts: Map<string, Post>;
+  private darkPoolData: Map<string, DarkPoolData>;
+  private unusualOptions: Map<string, UnusualOptions>;
+  private workflowNodes: Map<string, WorkflowNode>;
+  private workflowConnections: Map<string, WorkflowConnection>;
+  private apiConnectors: Map<string, ApiConnector>;
+  private analyticsData: Map<string, AnalyticsData>;
 
   constructor() {
     this.users = new Map();
+    this.posts = new Map();
+    this.darkPoolData = new Map();
+    this.unusualOptions = new Map();
+    this.workflowNodes = new Map();
+    this.workflowConnections = new Map();
+    this.apiConnectors = new Map();
+    this.analyticsData = new Map();
+    
+    this.seedData();
+  }
+
+  private seedData() {
+    this.automationSettings = {
+      id: randomUUID(),
+      masterEnabled: true,
+      darkPoolScanner: true,
+      unusualOptionsSweeps: true,
+      autoThreadPosting: false,
+      analyticsTracking: true,
+    };
+
+    const darkPoolItems: InsertDarkPoolData[] = [
+      { ticker: "NVDA", volume: 2500000, price: "875.50", sentiment: "Bullish", flowType: "Accumulation", timestamp: new Date().toISOString() },
+      { ticker: "AAPL", volume: 1800000, price: "178.25", sentiment: "Neutral", flowType: "Distribution", timestamp: new Date().toISOString() },
+      { ticker: "TSLA", volume: 3200000, price: "245.80", sentiment: "Bullish", flowType: "Accumulation", timestamp: new Date().toISOString() },
+      { ticker: "AMD", volume: 1500000, price: "165.30", sentiment: "Bearish", flowType: "Distribution", timestamp: new Date().toISOString() },
+      { ticker: "META", volume: 980000, price: "485.20", sentiment: "Bullish", flowType: "Accumulation", timestamp: new Date().toISOString() },
+    ];
+
+    darkPoolItems.forEach(item => {
+      const id = randomUUID();
+      this.darkPoolData.set(id, { id, ...item });
+    });
+
+    const optionsItems: InsertUnusualOptions[] = [
+      { ticker: "SPY", strike: "475", expiry: "Jan 19", type: "CALL", premium: "2.5M", volume: 15000, openInterest: 45000, timestamp: new Date().toISOString() },
+      { ticker: "QQQ", strike: "410", expiry: "Jan 26", type: "PUT", premium: "1.8M", volume: 12000, openInterest: 32000, timestamp: new Date().toISOString() },
+      { ticker: "NVDA", strike: "900", expiry: "Feb 16", type: "CALL", premium: "4.2M", volume: 8500, openInterest: 28000, timestamp: new Date().toISOString() },
+      { ticker: "AAPL", strike: "185", expiry: "Jan 19", type: "CALL", premium: "890K", volume: 6200, openInterest: 18000, timestamp: new Date().toISOString() },
+    ];
+
+    optionsItems.forEach(item => {
+      const id = randomUUID();
+      this.unusualOptions.set(id, { id, ...item });
+    });
+
+    const connectors: InsertApiConnector[] = [
+      { name: "Twitter/X API", type: "social", status: "connected", lastSync: new Date().toISOString(), config: {} },
+      { name: "Dark Pool Feed", type: "market-data", status: "connected", lastSync: new Date().toISOString(), config: {} },
+      { name: "Options Flow API", type: "market-data", status: "connected", lastSync: new Date().toISOString(), config: {} },
+      { name: "Finviz Scraper", type: "market-data", status: "disconnected", lastSync: null, config: {} },
+      { name: "TradingView Webhook", type: "alerts", status: "pending", lastSync: null, config: {} },
+    ];
+
+    connectors.forEach(connector => {
+      const id = randomUUID();
+      this.apiConnectors.set(id, { id, ...connector });
+    });
+
+    const posts: InsertPost[] = [
+      { content: "NVDA seeing massive dark pool accumulation...", variant: "A", status: "posted", impressions: 12500, engagements: 1025, clicks: 350 },
+      { content: "Unusual SPY 475C sweep detected...", variant: "A", status: "posted", impressions: 8900, engagements: 578, clicks: 223 },
+      { content: "Thread: Institutional flow analysis...", variant: "A", status: "scheduled", impressions: 0, engagements: 0, clicks: 0 },
+    ];
+
+    posts.forEach(post => {
+      const id = randomUUID();
+      this.posts.set(id, { id, ...post, retweets: 0, likes: 0, replies: 0, scheduledAt: null, postedAt: null, tags: null });
+    });
+
+    const workflowNodes: InsertWorkflowNode[] = [
+      { label: "Dark Pool Scanner", type: "trigger", icon: "ScanSearch", color: "primary", positionX: 100, positionY: 150, active: true },
+      { label: "Options Flow", type: "trigger", icon: "TrendingUp", color: "warning", positionX: 100, positionY: 280, active: true },
+      { label: "Volume Filter", type: "filter", icon: "Filter", color: "muted", positionX: 350, positionY: 180, active: true },
+      { label: "Sentiment Check", type: "filter", icon: "Database", color: "muted", positionX: 350, positionY: 310, active: true },
+      { label: "Generate Post", type: "action", icon: "MessageSquare", color: "positive", positionX: 600, positionY: 220, active: true },
+      { label: "Schedule", type: "action", icon: "Clock", color: "secondary", positionX: 850, positionY: 180, active: true },
+      { label: "Send Alert", type: "action", icon: "Bell", color: "negative", positionX: 850, positionY: 290, active: false },
+    ];
+
+    workflowNodes.forEach((node, index) => {
+      const id = (index + 1).toString();
+      this.workflowNodes.set(id, { id, ...node });
+    });
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -22,9 +162,7 @@ export class MemStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    return Array.from(this.users.values()).find(user => user.username === username);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -32,6 +170,164 @@ export class MemStorage implements IStorage {
     const user: User = { ...insertUser, id };
     this.users.set(id, user);
     return user;
+  }
+
+  async getAutomationSettings(): Promise<AutomationSettings | undefined> {
+    return this.automationSettings;
+  }
+
+  async updateAutomationSettings(settings: Partial<InsertAutomationSettings>): Promise<AutomationSettings> {
+    if (!this.automationSettings) {
+      this.automationSettings = {
+        id: randomUUID(),
+        masterEnabled: false,
+        darkPoolScanner: false,
+        unusualOptionsSweeps: false,
+        autoThreadPosting: false,
+        analyticsTracking: true,
+      };
+    }
+    this.automationSettings = { ...this.automationSettings, ...settings };
+    return this.automationSettings;
+  }
+
+  async getPosts(): Promise<Post[]> {
+    return Array.from(this.posts.values());
+  }
+
+  async getPost(id: string): Promise<Post | undefined> {
+    return this.posts.get(id);
+  }
+
+  async createPost(post: InsertPost): Promise<Post> {
+    const id = randomUUID();
+    const newPost: Post = { 
+      id, 
+      content: post.content,
+      variant: post.variant || "A",
+      status: post.status || "draft",
+      scheduledAt: post.scheduledAt || null,
+      postedAt: post.postedAt || null,
+      impressions: post.impressions || 0,
+      engagements: post.engagements || 0,
+      clicks: post.clicks || 0,
+      retweets: post.retweets || 0,
+      likes: post.likes || 0,
+      replies: post.replies || 0,
+      tags: post.tags || null,
+    };
+    this.posts.set(id, newPost);
+    return newPost;
+  }
+
+  async updatePost(id: string, post: Partial<InsertPost>): Promise<Post | undefined> {
+    const existing = this.posts.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...post };
+    this.posts.set(id, updated);
+    return updated;
+  }
+
+  async deletePost(id: string): Promise<boolean> {
+    return this.posts.delete(id);
+  }
+
+  async getDarkPoolData(): Promise<DarkPoolData[]> {
+    return Array.from(this.darkPoolData.values());
+  }
+
+  async createDarkPoolData(data: InsertDarkPoolData): Promise<DarkPoolData> {
+    const id = randomUUID();
+    const newData: DarkPoolData = { id, ...data };
+    this.darkPoolData.set(id, newData);
+    return newData;
+  }
+
+  async getUnusualOptions(): Promise<UnusualOptions[]> {
+    return Array.from(this.unusualOptions.values());
+  }
+
+  async createUnusualOptions(data: InsertUnusualOptions): Promise<UnusualOptions> {
+    const id = randomUUID();
+    const newData: UnusualOptions = { id, ...data };
+    this.unusualOptions.set(id, newData);
+    return newData;
+  }
+
+  async getWorkflowNodes(): Promise<WorkflowNode[]> {
+    return Array.from(this.workflowNodes.values());
+  }
+
+  async createWorkflowNode(node: InsertWorkflowNode): Promise<WorkflowNode> {
+    const id = randomUUID();
+    const newNode: WorkflowNode = { id, ...node };
+    this.workflowNodes.set(id, newNode);
+    return newNode;
+  }
+
+  async updateWorkflowNode(id: string, node: Partial<InsertWorkflowNode>): Promise<WorkflowNode | undefined> {
+    const existing = this.workflowNodes.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...node };
+    this.workflowNodes.set(id, updated);
+    return updated;
+  }
+
+  async deleteWorkflowNode(id: string): Promise<boolean> {
+    return this.workflowNodes.delete(id);
+  }
+
+  async getWorkflowConnections(): Promise<WorkflowConnection[]> {
+    return Array.from(this.workflowConnections.values());
+  }
+
+  async createWorkflowConnection(connection: InsertWorkflowConnection): Promise<WorkflowConnection> {
+    const id = randomUUID();
+    const newConnection: WorkflowConnection = { id, ...connection };
+    this.workflowConnections.set(id, newConnection);
+    return newConnection;
+  }
+
+  async deleteWorkflowConnection(id: string): Promise<boolean> {
+    return this.workflowConnections.delete(id);
+  }
+
+  async getApiConnectors(): Promise<ApiConnector[]> {
+    return Array.from(this.apiConnectors.values());
+  }
+
+  async getApiConnector(id: string): Promise<ApiConnector | undefined> {
+    return this.apiConnectors.get(id);
+  }
+
+  async createApiConnector(connector: InsertApiConnector): Promise<ApiConnector> {
+    const id = randomUUID();
+    const newConnector: ApiConnector = { id, ...connector };
+    this.apiConnectors.set(id, newConnector);
+    return newConnector;
+  }
+
+  async updateApiConnector(id: string, connector: Partial<InsertApiConnector>): Promise<ApiConnector | undefined> {
+    const existing = this.apiConnectors.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...connector };
+    this.apiConnectors.set(id, updated);
+    return updated;
+  }
+
+  async getAnalyticsData(period?: string): Promise<AnalyticsData[]> {
+    const data = Array.from(this.analyticsData.values());
+    if (period) {
+      return data.filter(d => d.period === period);
+    }
+    return data;
+  }
+
+  async createAnalyticsData(data: InsertAnalyticsData): Promise<AnalyticsData> {
+    const id = randomUUID();
+    const newData: AnalyticsData = { id, ...data };
+    this.analyticsData.set(id, newData);
+    return newData;
   }
 }
 
