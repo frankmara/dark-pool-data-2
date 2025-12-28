@@ -874,8 +874,9 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       }
     ];
   } else {
-    const volume = (data.volume / 1000000).toFixed(1);
-    const price = data.price;
+    const rawVolume = data.volume || data.size || 1500000;
+    const volume = (rawVolume / 1000000).toFixed(1);
+    const price = data.price || 100;
     const flowType = data.flowType || 'Activity';
     
     thread = [
@@ -940,7 +941,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     timestamp: now.toISOString(),
     eventType: isOptions ? 'options_sweep' : 'dark_pool',
     size: isOptions ? (data.contracts || 1000) : (data.size || data.volume || 50000),
-    sizeUsd: isOptions ? (data.premium || 500000) : (data.value || data.volume * (data.price || 100)),
+    sizeUsd: isOptions ? (data.premium || 500000) : (data.value || (data.volume || data.size || 1500000) * (data.price || 100)),
     price: isOptions ? undefined : data.price,
     strike: isOptions ? data.strike : undefined,
     expiry: isOptions ? data.expiry : undefined,
