@@ -931,23 +931,35 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     ];
   } else {
     const price = parseFloat(data.price) || 0;
-    // Use actual volume data from API - no mock fallbacks
-    let rawVolume = data.volume || data.size || 0;
+    // Use size field (print size) - NOT volume (market volume)
+    let rawVolume = data.size || 0;
     // If size is 0 but value exists, calculate from value/price
     if (rawVolume === 0 && data.value && price > 0) {
       rawVolume = Math.round(data.value / price);
     }
-    const volumeM = (rawVolume / 1000000).toFixed(2);
+    
+    // Smart formatting: use K for <1M, M for >=1M
+    const formatNumber = (num: number): string => {
+      if (num >= 1000000) {
+        return `${(num / 1000000).toFixed(2)}M`;
+      } else if (num >= 1000) {
+        return `${(num / 1000).toFixed(1)}K`;
+      } else {
+        return num.toLocaleString();
+      }
+    };
+    
+    const volumeFormatted = formatNumber(rawVolume);
     // Use actual notional value from API, or calculate from volume*price
     const notionalVal = data.value || (rawVolume * price);
-    const notional = (notionalVal / 1000000).toFixed(1);
+    const notionalFormatted = formatNumber(notionalVal);
     const flowType = data.flowType || 'Accumulation';
     const venue = data.venue || 'DARK';
     
     thread = [
       {
         index: 1,
-        content: `1/8 ALERT [${asOfTimestamp} ET]: Institutional dark pool print via @unusual_whales. $${ticker} - ${volumeM}M shares ($${notional}M, ${flowPercentile}th %ile). ${advPercent}% of ADV. P/C: ${putCallRatio}:1. Heatmap reveals ${sentiment} clustering. [Embedded Options Flow Heatmap]`,
+        content: `1/8 ALERT [${asOfTimestamp} ET]: Institutional dark pool print via @unusual_whales. $${ticker} - ${volumeFormatted} shares ($${notionalFormatted}, ${flowPercentile}th %ile). ${advPercent}% of ADV. P/C: ${putCallRatio}:1. Heatmap reveals ${sentiment} clustering. [Embedded Options Flow Heatmap]`,
         type: 'hook',
         chartRef: 'optionsFlowHeatmap'
       },
