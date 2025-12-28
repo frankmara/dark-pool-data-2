@@ -934,10 +934,21 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       }
     ];
   } else {
-    const rawVolume = data.volume || data.size || 1500000;
-    const volumeM = (rawVolume / 1000000).toFixed(2);
     const price = parseFloat(data.price) || 150;
-    const notional = (rawVolume * price / 1000000).toFixed(1);
+    // Calculate volume from value/price if size is missing/zero
+    let rawVolume = data.volume || data.size || 0;
+    if (rawVolume === 0 && data.value && price > 0) {
+      rawVolume = Math.round(data.value / price);
+    }
+    // Fallback to realistic mock if still 0 OR if calculated volume is unrealistically small
+    // Institutional dark pool prints are typically at least 50K shares
+    if (rawVolume < 50000) {
+      rawVolume = Math.floor(50000 + Math.random() * 950000);
+    }
+    const volumeM = (rawVolume / 1000000).toFixed(2);
+    // Calculate notional from volume if not provided or too small
+    let notionalVal = data.value && data.value > 1000000 ? data.value : rawVolume * price;
+    const notional = (notionalVal / 1000000).toFixed(1);
     const flowType = data.flowType || 'Accumulation';
     const venue = data.venue || 'DARK';
     

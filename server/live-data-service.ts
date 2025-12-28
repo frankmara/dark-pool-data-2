@@ -60,31 +60,73 @@ export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrin
       })
     ]);
 
-    const darkPoolData = darkPoolRes.ok ? await darkPoolRes.json() : { data: [] };
-    const optionsData = optionsRes.ok ? await optionsRes.json() : { data: [] };
+    console.log("Dark Pool API status:", darkPoolRes.status);
+    console.log("Options API status:", optionsRes.status);
+    
+    const darkPoolRaw = darkPoolRes.ok ? await darkPoolRes.json() : { data: [] };
+    const optionsRaw = optionsRes.ok ? await optionsRes.json() : { data: [] };
+    
+    // Handle different response structures (array directly vs { data: [...] })
+    const darkPoolData = Array.isArray(darkPoolRaw) ? darkPoolRaw : (darkPoolRaw.data || darkPoolRaw.result || []);
+    const optionsData = Array.isArray(optionsRaw) ? optionsRaw : (optionsRaw.data || optionsRaw.result || optionsRaw.trades || []);
+    
+    console.log("Dark pool records:", darkPoolData.length);
+    console.log("Options records:", optionsData.length);
+    
+    // Log sample of raw response to debug field names
+    if (darkPoolData.length > 0) {
+      console.log("Dark pool sample record:", JSON.stringify(darkPoolData[0]).slice(0, 500));
+    }
 
-    const darkPool: DarkPoolPrint[] = (darkPoolData.data || []).slice(0, 10).map((d: any) => ({
-      ticker: d.ticker || d.symbol || "UNKNOWN",
-      price: parseFloat(d.price) || 0,
-      size: parseInt(d.size || d.volume) || 0,
-      value: parseFloat(d.notional || d.value) || 0,
-      timestamp: d.timestamp || new Date().toISOString(),
-      venue: d.venue || d.exchange || "DARK",
-      percentOfAdv: parseFloat(d.percent_of_adv || d.adv_percent) || 0,
-      sentiment: inferSentiment(d)
-    }));
+    const darkPool: DarkPoolPrint[] = darkPoolData.slice(0, 10).map((d: any) => {
+      // Try multiple field name variations for size/volume
+      const rawSize = d.size || d.volume || d.shares || d.trade_size || d.qty || d.quantity || 0;
+      const size = typeof rawSize === 'string' ? parseInt(rawSize.replace(/,/g, '')) : parseInt(rawSize) || 0;
+      
+      // Try multiple field name variations for value/premium
+      const rawValue = d.notional || d.value || d.premium || d.trade_value || d.dollar_value || 0;
+      const value = typeof rawValue === 'string' ? parseFloat(rawValue.replace(/[$,]/g, '')) : parseFloat(rawValue) || 0;
+      
+      // Try multiple field name variations for price
+      const rawPrice = d.price || d.avg_price || d.execution_price || d.fill_price || 0;
+      const price = typeof rawPrice === 'string' ? parseFloat(rawPrice.replace(/[$,]/g, '')) : parseFloat(rawPrice) || 0;
 
-    const options: OptionsSweep[] = (optionsData.data || []).slice(0, 10).map((o: any) => ({
-      ticker: o.ticker || o.symbol || "UNKNOWN",
-      strike: parseFloat(o.strike) || 0,
-      expiry: o.expiry || o.expiration || "",
-      type: (o.type || o.option_type || "call").toLowerCase() as 'call' | 'put',
-      premium: parseFloat(o.premium || o.total_premium) || 0,
-      contracts: parseInt(o.size || o.contracts) || 0,
-      delta: parseFloat(o.delta) || 0,
-      timestamp: o.timestamp || new Date().toISOString(),
-      sentiment: o.type?.toLowerCase() === 'call' ? 'bullish' : 'bearish'
-    }));
+      return {
+        ticker: d.ticker || d.symbol || d.underlying || "UNKNOWN",
+        price,
+        size: size > 0 ? size : (value > 0 && price > 0 ? Math.round(value / price) : 0),
+        value: value > 0 ? value : (size > 0 && price > 0 ? size * price : 0),
+        timestamp: d.timestamp || d.executed_at || d.date || d.trade_date || new Date().toISOString(),
+        venue: d.venue || d.exchange || d.market || "DARK",
+        percentOfAdv: parseFloat(d.percent_of_adv || d.adv_percent || d.pct_adv) || 0,
+        sentiment: inferSentiment(d)
+      };
+    });
+
+    // Log sample of raw response to debug field names
+    if (optionsData.length > 0) {
+      console.log("Options sample record:", JSON.stringify(optionsData[0]).slice(0, 500));
+    }
+
+    const options: OptionsSweep[] = optionsData.slice(0, 10).map((o: any) => {
+      const rawPremium = o.premium || o.total_premium || o.cost || o.value || 0;
+      const premium = typeof rawPremium === 'string' ? parseFloat(rawPremium.replace(/[$,]/g, '')) : parseFloat(rawPremium) || 0;
+      
+      const rawContracts = o.size || o.contracts || o.volume || o.qty || 0;
+      const contracts = typeof rawContracts === 'string' ? parseInt(rawContracts.replace(/,/g, '')) : parseInt(rawContracts) || 0;
+      
+      return {
+        ticker: o.ticker || o.symbol || o.underlying || "UNKNOWN",
+        strike: parseFloat(o.strike || o.strike_price) || 0,
+        expiry: o.expiry || o.expiration || o.exp_date || o.expiration_date || "",
+        type: (o.type || o.option_type || o.put_call || "call").toLowerCase() as 'call' | 'put',
+        premium,
+        contracts,
+        delta: parseFloat(o.delta) || 0,
+        timestamp: o.timestamp || o.executed_at || o.date || new Date().toISOString(),
+        sentiment: (o.type || o.option_type || o.put_call || '').toLowerCase() === 'call' ? 'bullish' : 'bearish'
+      };
+    });
 
     return { darkPool, options };
   } catch (error) {
