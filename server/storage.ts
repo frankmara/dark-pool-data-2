@@ -228,6 +228,90 @@ export class MemStorage implements IStorage {
           maxCharsPerTweet: 280
         }
       },
+      {
+        label: "Auto Chart & Flow Engine",
+        type: "llm_agent",
+        icon: "BarChart3",
+        color: "warning",
+        positionX: 850,
+        positionY: 350,
+        active: true,
+        config: {
+          nodeType: "chart_engine",
+          outputs: {
+            image1_chart: {
+              name: "TradingView-style Chart",
+              description: "Annotated price chart with dark pool print markers",
+              attachTo: "tweet1"
+            },
+            image2_flowCard: {
+              name: "Flow Summary Card",
+              description: "Branded Dark Pool Data summary card",
+              attachTo: "tweet2_or_3"
+            }
+          },
+          chartConfig: {
+            theme: "dark",
+            timeframe: "1h",
+            timeframeOptions: ["15m", "1h", "4h", "1D"],
+            elements: {
+              candles: true,
+              darkPoolPrintMarker: true,
+              volumeProfile: {
+                enabled: true,
+                showPOC: true,
+                showVAH: true,
+                showVAL: true
+              },
+              emas: {
+                enabled: true,
+                periods: [20, 50, 200]
+              },
+              vwap: {
+                enabled: true,
+                sessionVWAP: true,
+                previousClose: true
+              },
+              keyLevels: {
+                enabled: true,
+                recentHighLow: true,
+                gapFills: true
+              }
+            },
+            maxElements: 6,
+            style: {
+              backgroundColor: "#0a0a0f",
+              gridColor: "#1a1a2e",
+              upColor: "#10B981",
+              downColor: "#EF4444",
+              textColor: "#e0e0e0"
+            }
+          },
+          flowCardConfig: {
+            layout: "branded",
+            theme: "dark",
+            elements: {
+              ticker: { size: "large", position: "top-left" },
+              timestamp: { format: "MMM DD, HH:mm", position: "top-right" },
+              printSize: { showUSD: true, showShares: true, showContracts: true },
+              greeks: { delta: true, gamma: true, premium: true },
+              breakeven: { showIfOptions: true },
+              conviction: { badge: true, arrow: true }
+            },
+            colors: {
+              background: "#0a0a0f",
+              border: "#1a1a2e",
+              buyAccent: "#10B981",
+              sellAccent: "#EF4444",
+              neutralAccent: "#6366F1"
+            },
+            branding: {
+              logo: "Dark Pool Data",
+              watermark: true
+            }
+          }
+        }
+      },
       { label: "Post to X", type: "action", icon: "Twitter", color: "primary", positionX: 1100, positionY: 150, active: true },
       { label: "Send Alert", type: "action", icon: "Bell", color: "negative", positionX: 1100, positionY: 280, active: false },
     ];

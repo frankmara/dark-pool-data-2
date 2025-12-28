@@ -77,8 +77,8 @@ const nodeTypes = [
   ]},
   { type: "llm_agent", label: "LLM Agents", items: [
     { icon: "Brain", label: "Research Ghostwriter", color: "secondary" },
-    { icon: "FileText", label: "Thread Composer", color: "primary" },
-    { icon: "Target", label: "Signal Analyzer", color: "warning" },
+    { icon: "BarChart3", label: "Chart & Flow Engine", color: "warning" },
+    { icon: "Target", label: "Signal Analyzer", color: "primary" },
   ]},
   { type: "action", label: "Actions", items: [
     { icon: "MessageSquare", label: "Generate Post", color: "positive" },
@@ -95,7 +95,8 @@ const defaultConnections: Connection[] = [
   { from: "4", to: "6" },
   { from: "5", to: "6" },
   { from: "6", to: "7" },
-  { from: "6", to: "8" },
+  { from: "7", to: "8" },
+  { from: "7", to: "9" },
 ];
 
 export default function WorkflowCanvas() {
@@ -396,6 +397,7 @@ export default function WorkflowCanvas() {
                   const Icon = iconMap[node.icon || "Database"] || Database;
                   const config = node.config as any;
                   const isGhostwriter = node.type === "llm_agent" && config?.nodeType === "ghostwriter";
+                  const isChartEngine = node.type === "llm_agent" && config?.nodeType === "chart_engine";
                   
                   return (
                     <>
@@ -597,6 +599,148 @@ export default function WorkflowCanvas() {
                               <div className="flex items-center justify-between">
                                 <span className="text-xs">Max chars per tweet</span>
                                 <Badge variant="outline" className="font-mono text-[10px]">280</Badge>
+                              </div>
+                            </div>
+                          </TabsContent>
+                        </Tabs>
+                      ) : isChartEngine ? (
+                        <Tabs defaultValue="chart" className="w-full">
+                          <TabsList className="w-full grid grid-cols-2">
+                            <TabsTrigger value="chart" className="text-xs" data-testid="tab-chart">Chart</TabsTrigger>
+                            <TabsTrigger value="flowcard" className="text-xs" data-testid="tab-flowcard">Flow Card</TabsTrigger>
+                          </TabsList>
+                          
+                          <TabsContent value="chart" className="space-y-3 mt-3">
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Output: Image 1</p>
+                              <div className="p-2 rounded bg-warning/10 border border-warning/20">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <BarChart3 className="w-3 h-3 text-warning" />
+                                  <span className="text-xs font-medium">TradingView-style Chart</span>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">Attaches to Tweet 1 (Hook)</p>
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Timeframe</p>
+                              <div className="grid grid-cols-4 gap-1">
+                                {["15m", "1h", "4h", "1D"].map((tf) => (
+                                  <div 
+                                    key={tf} 
+                                    className={`p-1.5 rounded text-center text-[10px] font-mono cursor-pointer ${
+                                      (config?.chartConfig?.timeframe || "1h") === tf 
+                                        ? 'bg-primary text-primary-foreground' 
+                                        : 'bg-muted/30 hover-elevate'
+                                    }`}
+                                  >
+                                    {tf}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Chart Elements</p>
+                              <div className="space-y-1.5">
+                                {[
+                                  { key: "candles", label: "Candles/Bars", enabled: true },
+                                  { key: "darkPoolPrintMarker", label: "Dark Pool Print Marker", enabled: true },
+                                  { key: "volumeProfile", label: "Volume Profile (POC/VAH/VAL)", enabled: true },
+                                  { key: "emas", label: "EMAs (20/50/200)", enabled: true },
+                                  { key: "vwap", label: "VWAP + Previous Close", enabled: true },
+                                  { key: "keyLevels", label: "Key Levels (High/Low/Gaps)", enabled: true }
+                                ].map((item) => (
+                                  <div key={item.key} className="flex items-center justify-between p-1.5 rounded bg-muted/30">
+                                    <span className="text-[10px]">{item.label}</span>
+                                    <Switch 
+                                      checked={item.enabled}
+                                      className="scale-75"
+                                      data-testid={`switch-chart-${item.key}`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="p-2 rounded bg-muted/30 flex items-center justify-between">
+                                <span className="text-[10px] text-muted-foreground">Max elements</span>
+                                <Badge variant="outline" className="font-mono text-[10px]">6</Badge>
+                              </div>
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="flowcard" className="space-y-3 mt-3">
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Output: Image 2</p>
+                              <div className="p-2 rounded bg-primary/10 border border-primary/20">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <FileText className="w-3 h-3 text-primary" />
+                                  <span className="text-xs font-medium">Flow Summary Card</span>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">Attaches to Tweet 2 or 3</p>
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Card Elements</p>
+                              <div className="space-y-1.5">
+                                {[
+                                  { key: "ticker", label: "Ticker + Timestamp" },
+                                  { key: "printSize", label: "Print Size (USD/Shares)" },
+                                  { key: "greeks", label: "Delta / Gamma / Premium" },
+                                  { key: "breakeven", label: "Breakeven Levels" },
+                                  { key: "conviction", label: "Conviction Badge + Arrow" }
+                                ].map((item) => (
+                                  <div key={item.key} className="flex items-center justify-between p-1.5 rounded bg-muted/30">
+                                    <span className="text-[10px]">{item.label}</span>
+                                    <Switch 
+                                      checked={true}
+                                      className="scale-75"
+                                      data-testid={`switch-card-${item.key}`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Color Scheme</p>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                <div className="p-2 rounded bg-positive/10 text-center border border-positive/20">
+                                  <div className="w-4 h-4 rounded-full bg-positive mx-auto mb-1" />
+                                  <span className="text-[10px] text-positive">Buy</span>
+                                </div>
+                                <div className="p-2 rounded bg-negative/10 text-center border border-negative/20">
+                                  <div className="w-4 h-4 rounded-full bg-negative mx-auto mb-1" />
+                                  <span className="text-[10px] text-negative">Sell</span>
+                                </div>
+                                <div className="p-2 rounded bg-primary/10 text-center border border-primary/20">
+                                  <div className="w-4 h-4 rounded-full bg-primary mx-auto mb-1" />
+                                  <span className="text-[10px] text-primary">Neutral</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Branding</p>
+                              <div className="p-2 rounded bg-muted/30 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px]">Logo: Dark Pool Data</span>
+                                  <Check className="w-3 h-3 text-positive" />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px]">Watermark</span>
+                                  <Switch checked={true} className="scale-75" data-testid="switch-watermark" />
+                                </div>
                               </div>
                             </div>
                           </TabsContent>

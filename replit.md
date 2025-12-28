@@ -99,6 +99,28 @@ A specialized LLM agent node that generates institutional-grade 4-part X threads
 - Generates 3 variants per event: Neutral, Bullish, Bearish
 - Auto-selects best variant based on inferred direction from print/sweep delta + price reaction
 
+### 8. Auto Chart & Flow Summary Engine (LLM Agent Node)
+A visualization node that generates 2 images for every thread:
+
+**Image 1 - TradingView-style Chart (Dark Theme):**
+- Candles/bars (configurable 15m/1h/4h/1D timeframe)
+- Dark pool print marker with price/time and $ size
+- Volume profile showing POC/VAH/VAL
+- EMAs (20/50/200)
+- VWAP session + previous close
+- Key levels (recent high/low, gap fills)
+- Max 5-6 elements for clean visualization
+
+**Image 2 - Flow Summary Card (Branded Dark Pool Data):**
+- Large ticker + print timestamp
+- Print size (USD & shares/contracts)
+- Premium / delta exposure / gamma notional
+- Breakeven levels (if options)
+- Directional arrow + conviction badge (High/Med/Low)
+- Dark background with green/red accents for buy/sell
+
+**Output:** Chart attaches to Tweet 1, Summary Card attaches to Tweet 2 or 3
+
 ## Design System
 - **Theme**: Dark finance professional (deep navy blues, blacks)
 - **Colors**: 
