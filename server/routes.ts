@@ -37,7 +37,23 @@ import {
   generateMockIVTermStructureData,
   createSessionContext,
   generateSessionCandles,
-  formatSessionTimestamp
+  formatSessionTimestamp,
+  generateGammaExposureSvg,
+  generateMockGammaExposureData,
+  generateHistoricalVsImpliedVolSvg,
+  generateMockHistoricalVsImpliedVolData,
+  generateGreeksSurfaceSvg,
+  generateMockGreeksSurfaceData,
+  generateTradeTapeTimelineSvg,
+  generateMockTradeTapeTimelineData,
+  generateSectorCorrelationSvg,
+  generateMockSectorCorrelationData,
+  generateMaxPainSvg,
+  generateMockMaxPainData,
+  generateIVRankHistogramSvg,
+  generateMockIVRankHistogramData,
+  generateOptionsStockVolumeSvg,
+  generateMockOptionsStockVolumeData
 } from "./chart-generator";
 
 const scannerConfigUpdateSchema = z.object({
@@ -850,6 +866,14 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   
   let thread: any[];
   
+  // Additional metrics for 8-post institutional thread
+  const flowPercentile = Math.floor(85 + Math.random() * 10);
+  const putCallRatio = (0.6 + Math.random() * 1.2).toFixed(2);
+  const totalPremium = ((1 + Math.random() * 2) * 1000000000).toFixed(0);
+  const gammaNetExposure = (Math.random() > 0.5 ? '+' : '-') + '$' + (Math.floor(Math.random() * 400) + 100) + 'M';
+  const sectorCorrelation = (0.3 + Math.random() * 0.5).toFixed(2);
+  const unusualityScore = Math.floor(75 + Math.random() * 20);
+  
   if (isOptions) {
     const premium = data.premium || '$1.2M';
     const strike = data.strike || 150;
@@ -862,28 +886,51 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     thread = [
       {
         index: 1,
-        content: `1/5 ALERT [${asOfTimestamp} ET]: Anomalous ${optionType} sweep detected via @unusual_whales. $${ticker} ${strike}${optionType[0]} ${expiry} - ${premium} notional. Vol ${volume} vs OI ${oi} (${(parseInt(volume.replace(/,/g, '')) / parseInt(oi.replace(/,/g, '')) * 100).toFixed(0)}% ratio). Print at NBBO mid.`,
-        type: 'hook'
+        content: `1/8 ALERT [${asOfTimestamp} ET]: Institutional flow detected via @unusual_whales. $${ticker} ${strike}${optionType[0]} ${expiry} - ${premium} (${flowPercentile}th %ile). Vol ${volume} vs OI ${oi}. P/C: ${putCallRatio}:1. Initial heatmap reveals ${sentiment} clustering. [Embedded Options Flow Heatmap]`,
+        type: 'hook',
+        chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 2,
-        content: `2/5 Flow Context: Net delta exposure +${deltaExposure}K shares equiv. P/C OI ratio at 0.${Math.floor(60 + Math.random() * 40)} (${ivPercentile}th %ile). 25-delta RR: ${skewDirection}-side premium. Dealer positioning: ${dealerGamma}. Similar pattern last seen ${historicalComparison}.`,
-        type: 'context'
+        content: `2/8 Vol Breakdown: Smile chart shows ${skewDirection}-side skew at 12-mo ${sentiment === 'bearish' ? 'high' : 'low'}. HV vs IV overlay highlights ${(10 + Math.random() * 8).toFixed(0)}-pt premium - potential ${sentiment === 'bearish' ? 'overhedge' : 'underhedge'} signal. IV rank: ${ivPercentile}th %ile. [Embedded HV vs IV Chart]`,
+        type: 'volatility',
+        chartRef: 'historicalVsImpliedVol'
       },
       {
         index: 3,
-        content: `3/5 Structure: Strike cluster ${strike-5}/${strike}/${strike+5} showing ${(1 + Math.random() * 2).toFixed(1)}x normal activity. GEX flip level: $${(strike * 0.97).toFixed(0)}. Max pain: $${strike}. Vanna/charm ${optionType === 'CALL' ? 'tailwind' : 'headwind'} into ${expiry} expiry.`,
-        type: 'technicals'
+        content: `3/8 Greeks Analysis: Surface plot indicates vega concentration in front-month. Unusuality: ${flowPercentile}th %ile buildup. NaNs in far strikes flagged for off-exchange probe. Delta exposure: +${deltaExposure}K shares equiv. [Embedded Greeks Surface]`,
+        type: 'greeks',
+        chartRef: 'greeksSurface'
       },
       {
         index: 4,
-        content: `4/5 Volatility: IV ${ivPercentile}th %ile. ATM IV ${(25 + Math.random() * 15).toFixed(1)}% vs 20d realized ${(20 + Math.random() * 10).toFixed(1)}%. Term structure ${Math.random() > 0.5 ? 'inverted' : 'contango'}. Skew: ${skewDirection}-side +${(2 + Math.random() * 4).toFixed(1)} vol pts.`,
-        type: 'volatility'
+        content: `4/8 Gamma Positioning: Exposure chart reveals wall at $${strike}. Net gamma: ${gammaNetExposure} ${sentiment === 'bullish' ? 'long' : 'short'}. GEX flip: $${(strike * 0.97).toFixed(0)}. Scenarios: ${sentiment === 'bullish' ? 'Pin' : 'Breakout'} ${50 + Math.floor(Math.random() * 15)}% prob. [Embedded Gamma Exposure]`,
+        type: 'gamma',
+        chartRef: 'gammaExposure'
       },
       {
         index: 5,
-        content: `5/5 Assessment: Conviction ${conviction.toUpperCase()}. Prob scenarios: Continuation ${45 + Math.floor(Math.random() * 15)}%, Mean reversion ${25 + Math.floor(Math.random() * 10)}%, Tail ${10 + Math.floor(Math.random() * 5)}%. Not advice. Sources: UW, consolidated tape. #DarkPoolData`,
-        type: 'implications'
+        content: `5/8 Trade Dynamics: Timeline shows intraday whale sweeps peaking mid-session. Ratio to ADV: ${(180 + Math.random() * 80).toFixed(0)}%. Conviction ${conviction}, tail risk ${(15 + Math.random() * 10).toFixed(0)}%. [Embedded Trade Tape Timeline]`,
+        type: 'flow',
+        chartRef: 'tradeTapeTimeline'
+      },
+      {
+        index: 6,
+        content: `6/8 Sector Context: Correlation heatmap to peers: ${sectorCorrelation} avg. ${parseFloat(sectorCorrelation) < 0.5 ? 'Decoupling implies isolated risk - monitor for contagion.' : 'Normal correlation - sector-wide move.'} Data caveats: Partial NaNs in correlations. [Embedded Sector Correlation]`,
+        type: 'sector',
+        chartRef: 'sectorCorrelation'
+      },
+      {
+        index: 7,
+        content: `7/8 Pain & Rank: Max pain at $${strike}. IV histogram at ${ivPercentile}th %ile - ${ivPercentile > 80 ? 'rich vol, crush risk' : 'vol expansion opportunity'}. OI ladder shows ${sentiment === 'bullish' ? 'call' : 'put'} concentration. Similar pattern: ${historicalComparison}. [Embedded Max Pain + IV Rank]`,
+        type: 'pain',
+        chartRef: 'maxPain'
+      },
+      {
+        index: 8,
+        content: `8/8 Synthesis: Overall unusuality ${unusualityScore}/100. Recommendation: Track follow-through in lit markets. Monitor options/stock vol ratio for confirmation. Not advice - DYOR. Sources: @unusual_whales API. #InstitutionalFlow #DarkPoolData`,
+        type: 'synthesis',
+        chartRef: 'optionsStockVolume'
       }
     ];
   } else {
@@ -897,28 +944,51 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     thread = [
       {
         index: 1,
-        content: `1/5 ALERT [${asOfTimestamp} ET]: Notable dark pool print. $${ticker} - ${volumeM}M shares ($${notional}M notional) at $${price.toFixed(2)}. ${advPercent}% of ADV. Venue: ${venue}. Print ${vwapDelta}% vs session VWAP. Tone: ${sentiment}.`,
-        type: 'hook'
+        content: `1/8 ALERT [${asOfTimestamp} ET]: Institutional dark pool print via @unusual_whales. $${ticker} - ${volumeM}M shares ($${notional}M, ${flowPercentile}th %ile). ${advPercent}% of ADV. P/C: ${putCallRatio}:1. Heatmap reveals ${sentiment} clustering. [Embedded Options Flow Heatmap]`,
+        type: 'hook',
+        chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 2,
-        content: `2/5 Options Overlay via @unusual_whales: Net delta ${sentiment === 'bullish' ? 'positive' : 'negative'}. P/C ratio 0.${Math.floor(50 + Math.random() * 50)}. 25-delta RR at 6-mo ${sentiment === 'bearish' ? 'high' : 'low'}. ${skewDirection}-side premium ${(2 + Math.random() * 3).toFixed(1)} vol pts rich. Similar setup: ${historicalComparison}.`,
-        type: 'context'
+        content: `2/8 Vol Breakdown: Smile shows ${skewDirection}-side skew at 12-mo extremes. HV vs IV spread: ${(8 + Math.random() * 10).toFixed(0)} pts premium. IV rank: ${ivPercentile}th %ile - ${ivPercentile > 80 ? 'elevated, crush risk' : 'room to expand'}. [Embedded HV vs IV Chart]`,
+        type: 'volatility',
+        chartRef: 'historicalVsImpliedVol'
       },
       {
         index: 3,
-        content: `3/5 Technicals: Print ${sentiment === 'bullish' ? 'above' : 'below'} 20 EMA. POC at $${(price * 0.995).toFixed(2)}. Key levels: S1 $${(price * 0.97).toFixed(2)}, R1 $${(price * 1.03).toFixed(2)}. Dealer ${dealerGamma}. Order flow: ${flowType.toLowerCase()} bias confirmed.`,
-        type: 'technicals'
+        content: `3/8 Greeks Analysis: Vega surface concentrated in front-month. Unusuality: ${flowPercentile}th %ile. Far strike NaNs flagged - off-exchange suspected. Delta net ${sentiment === 'bullish' ? 'positive' : 'negative'}. [Embedded Greeks Surface]`,
+        type: 'greeks',
+        chartRef: 'greeksSurface'
       },
       {
         index: 4,
-        content: `4/5 Vol Surface: IV ${ivPercentile}th %ile. ATM ${(22 + Math.random() * 12).toFixed(1)}% vs HV20 ${(18 + Math.random() * 8).toFixed(1)}%. Term struct: front-month ${Math.random() > 0.5 ? 'elevated' : 'compressed'}. Skew ${skewDirection}-leaning. GEX imbalance near ${sentiment === 'bullish' ? 'support' : 'resistance'}.`,
-        type: 'analytics'
+        content: `4/8 Gamma Positioning: Dealer exposure ${gammaNetExposure} ${sentiment === 'bullish' ? 'long' : 'short'}. Wall at $${(price * 1.02).toFixed(0)} suggests ${sentiment === 'bullish' ? 'mean reversion' : 'amplified moves'}. Prob consolidation: ${55 + Math.floor(Math.random() * 15)}%. [Embedded Gamma Exposure]`,
+        type: 'gamma',
+        chartRef: 'gammaExposure'
       },
       {
         index: 5,
-        content: `5/5 Assessment: Conviction ${conviction.toUpperCase()}. Scenarios: ${sentiment === 'bullish' ? 'Accumulation' : 'Distribution'} ${45 + Math.floor(Math.random() * 15)}%, Consolidation ${30 + Math.floor(Math.random() * 10)}%, Reversal ${10 + Math.floor(Math.random() * 5)}%. Monitor catalysts. Not advice. #DarkPoolData`,
-        type: 'implications'
+        content: `5/8 Trade Dynamics: Whale sweeps peak mid-session. Options/ADV ratio: ${(180 + Math.random() * 100).toFixed(0)}%. Print ${vwapDelta}% vs VWAP. Conviction: ${conviction}. Tail risk: ${(12 + Math.random() * 10).toFixed(0)}%. [Embedded Trade Tape Timeline]`,
+        type: 'flow',
+        chartRef: 'tradeTapeTimeline'
+      },
+      {
+        index: 6,
+        content: `6/8 Sector Context: Peer correlation: ${sectorCorrelation} avg. ${parseFloat(sectorCorrelation) < 0.5 ? 'Decoupling detected - isolated catalyst likely.' : 'Sector-aligned move.'} Probe macro linkage. NaN caveats in peer data. [Embedded Sector Correlation]`,
+        type: 'sector',
+        chartRef: 'sectorCorrelation'
+      },
+      {
+        index: 7,
+        content: `7/8 Pain & Rank: Max pain: $${(price * 0.99).toFixed(0)}. IV histogram: ${ivPercentile}th %ile. OI ladder: ${sentiment === 'bullish' ? 'call' : 'put'}-heavy. Historical parallel: ${historicalComparison}. [Embedded Max Pain + IV Rank]`,
+        type: 'pain',
+        chartRef: 'maxPain'
+      },
+      {
+        index: 8,
+        content: `8/8 Synthesis: Unusuality score: ${unusualityScore}/100. Action: Monitor lit flow follow-through. Cross-check with consolidated tape. Not advice - DYOR. Sources: @unusual_whales, dark pool aggregators. #InstitutionalFlow #DarkPoolData`,
+        type: 'synthesis',
+        chartRef: 'optionsStockVolume'
       }
     ];
   }
@@ -984,6 +1054,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   // Generate institutional analytics charts with synchronized timestamps
   const sessionTimestamp = formatSessionTimestamp(session.asOfTime, 'short');
   
+  // Original 5 charts
   const smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
   const volatilitySmileSvg = generateVolatilitySmileSvg(smileData);
 
@@ -996,6 +1067,31 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const ivData = { ...generateMockIVTermStructureData(ticker), asOfTimestamp: sessionTimestamp };
   const ivTermStructureSvg = generateIVTermStructureSvg(ivData);
   
+  // 8 NEW institutional charts
+  const gammaData = { ...generateMockGammaExposureData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  const gammaExposureSvg = generateGammaExposureSvg(gammaData);
+
+  const hvIvData = { ...generateMockHistoricalVsImpliedVolData(ticker), asOfTimestamp: sessionTimestamp };
+  const historicalVsImpliedVolSvg = generateHistoricalVsImpliedVolSvg(hvIvData);
+
+  const greeksData = { ...generateMockGreeksSurfaceData(ticker, basePrice, 'vega'), asOfTimestamp: sessionTimestamp };
+  const greeksSurfaceSvg = generateGreeksSurfaceSvg(greeksData);
+
+  const tapeData = { ...generateMockTradeTapeTimelineData(ticker), asOfTimestamp: sessionTimestamp };
+  const tradeTapeTimelineSvg = generateTradeTapeTimelineSvg(tapeData);
+
+  const corrData = { ...generateMockSectorCorrelationData(ticker), asOfTimestamp: sessionTimestamp };
+  const sectorCorrelationSvg = generateSectorCorrelationSvg(corrData);
+
+  const maxPainData = { ...generateMockMaxPainData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  const maxPainSvg = generateMaxPainSvg(maxPainData);
+
+  const ivRankData = { ...generateMockIVRankHistogramData(ticker), asOfTimestamp: sessionTimestamp };
+  const ivRankHistogramSvg = generateIVRankHistogramSvg(ivRankData);
+
+  const optVolData = { ...generateMockOptionsStockVolumeData(ticker), asOfTimestamp: sessionTimestamp };
+  const optionsStockVolumeSvg = generateOptionsStockVolumeSvg(optVolData);
+  
   return {
     ticker,
     eventType: isOptions ? 'options_sweep' : 'dark_pool',
@@ -1006,12 +1102,23 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     generatedAt: session.asOfTime.toISOString(),
     sentiment,
     engagement,
+    // Core charts
     chartSvg,
     flowSummarySvg,
+    // Original analytics charts
     volatilitySmileSvg,
     optionsFlowHeatmapSvg,
     putCallOILadderSvg,
     ivTermStructureSvg,
+    // 8 NEW institutional charts
+    gammaExposureSvg,
+    historicalVsImpliedVolSvg,
+    greeksSurfaceSvg,
+    tradeTapeTimelineSvg,
+    sectorCorrelationSvg,
+    maxPainSvg,
+    ivRankHistogramSvg,
+    optionsStockVolumeSvg,
     isLiveData
   };
 }

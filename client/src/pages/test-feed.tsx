@@ -70,37 +70,65 @@ interface TweetCardProps {
 function TweetCard({ post }: TweetCardProps) {
   const thread = post.thread as any[];
   const engagement = post.engagement as any;
+  
+  // Core charts
   const chartSvg = (post as any).chartSvg as string | undefined;
   const flowSummarySvg = (post as any).flowSummarySvg as string | undefined;
+  
+  // Original analytics charts
   const volatilitySmileSvg = (post as any).volatilitySmileSvg as string | undefined;
   const optionsFlowHeatmapSvg = (post as any).optionsFlowHeatmapSvg as string | undefined;
   const putCallOILadderSvg = (post as any).putCallOILadderSvg as string | undefined;
   const ivTermStructureSvg = (post as any).ivTermStructureSvg as string | undefined;
+  
+  // 8 NEW institutional charts
+  const gammaExposureSvg = (post as any).gammaExposureSvg as string | undefined;
+  const historicalVsImpliedVolSvg = (post as any).historicalVsImpliedVolSvg as string | undefined;
+  const greeksSurfaceSvg = (post as any).greeksSurfaceSvg as string | undefined;
+  const tradeTapeTimelineSvg = (post as any).tradeTapeTimelineSvg as string | undefined;
+  const sectorCorrelationSvg = (post as any).sectorCorrelationSvg as string | undefined;
+  const maxPainSvg = (post as any).maxPainSvg as string | undefined;
+  const ivRankHistogramSvg = (post as any).ivRankHistogramSvg as string | undefined;
+  const optionsStockVolumeSvg = (post as any).optionsStockVolumeSvg as string | undefined;
+  
   const isLiveData = (post as any).isLiveData as boolean | undefined;
 
+  // Map thread index to appropriate chart based on 8-post format
   const getChartForIndex = (idx: number): string | undefined => {
     switch (idx) {
-      case 0: return chartSvg;
-      case 1: return optionsFlowHeatmapSvg;
-      case 2: return putCallOILadderSvg;
-      case 3: return volatilitySmileSvg;
-      case 4: return ivTermStructureSvg;
+      case 0: return optionsFlowHeatmapSvg; // 1/8 - Options Flow Heatmap
+      case 1: return historicalVsImpliedVolSvg; // 2/8 - HV vs IV
+      case 2: return greeksSurfaceSvg; // 3/8 - Greeks Surface
+      case 3: return gammaExposureSvg; // 4/8 - Gamma Exposure
+      case 4: return tradeTapeTimelineSvg; // 5/8 - Trade Tape Timeline
+      case 5: return sectorCorrelationSvg; // 6/8 - Sector Correlation
+      case 6: return maxPainSvg; // 7/8 - Max Pain
+      case 7: return optionsStockVolumeSvg; // 8/8 - Options vs Stock Volume
       default: return undefined;
     }
   };
 
   const getSecondaryChartForIndex = (idx: number): string | undefined => {
-    if (idx === 1) return flowSummarySvg;
-    return undefined;
+    // Add secondary charts where appropriate
+    switch (idx) {
+      case 0: return flowSummarySvg; // Flow summary with heatmap
+      case 1: return volatilitySmileSvg; // Smile with HV/IV
+      case 2: return putCallOILadderSvg; // OI ladder with Greeks
+      case 6: return ivRankHistogramSvg; // IV Rank with Max Pain
+      default: return undefined;
+    }
   };
 
   const getChartLabel = (idx: number): string => {
     switch (idx) {
-      case 0: return 'Price Chart with Dark Pool Print';
-      case 1: return 'Options Flow Heatmap';
-      case 2: return 'Put/Call OI Delta Ladder';
-      case 3: return 'Volatility Smile Analysis';
-      case 4: return 'IV Term Structure with 24h Changes';
+      case 0: return 'Options Flow Heatmap + Flow Summary';
+      case 1: return 'Historical vs Implied Volatility + Smile';
+      case 2: return 'Greeks Surface + OI Ladder';
+      case 3: return 'Gamma Exposure';
+      case 4: return 'Trade Tape Timeline';
+      case 5: return 'Sector Correlation Heatmap';
+      case 6: return 'Max Pain + IV Rank Histogram';
+      case 7: return 'Options vs Stock Volume Ratio';
       default: return '';
     }
   };

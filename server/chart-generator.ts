@@ -876,3 +876,961 @@ export function generateMockCandles(basePrice: number, count: number = 50): Char
 
   return candles;
 }
+
+// ============================================================================
+// NEW INSTITUTIONAL CHART TYPES
+// ============================================================================
+
+// 1. GAMMA EXPOSURE CHART
+interface GammaExposureData {
+  ticker: string;
+  strikes: number[];
+  netGamma: number[];
+  spotPrice: number;
+  totalDealerExposure: number;
+  gammaFlips: { strike: number; percentile: number }[];
+  asOfTimestamp?: string;
+}
+
+export function generateGammaExposureSvg(data: GammaExposureData): string {
+  const width = 800;
+  const height = 450;
+  const padding = { top: 60, right: 120, bottom: 60, left: 80 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const maxGamma = Math.max(...data.netGamma.map(Math.abs)) * 1.1;
+  const barWidth = chartWidth / data.strikes.length * 0.7;
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  svg += `<text x="${padding.left}" y="30" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Gamma Exposure by Strike</text>`;
+  svg += `<text x="${padding.left}" y="48" fill="#6b7280" font-size="11" font-family="sans-serif">Net Dealer Gamma (Positive=Long, Negative=Short)</text>`;
+
+  // Zero line
+  const zeroY = padding.top + chartHeight / 2;
+  svg += `<line x1="${padding.left}" y1="${zeroY}" x2="${width - padding.right}" y2="${zeroY}" stroke="#374151" stroke-width="1"/>`;
+  svg += `<text x="${padding.left - 8}" y="${zeroY + 4}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">0</text>`;
+
+  // Gamma bars
+  data.strikes.forEach((strike, i) => {
+    const gamma = data.netGamma[i];
+    const x = padding.left + (i / data.strikes.length) * chartWidth + barWidth / 4;
+    const barHeight = Math.abs(gamma) / maxGamma * (chartHeight / 2);
+    const isPositive = gamma >= 0;
+    const color = isPositive ? '#10B981' : '#EF4444';
+    const y = isPositive ? zeroY - barHeight : zeroY;
+    
+    // Check if this is a NaN - render as hatched
+    if (isNaN(gamma)) {
+      svg += `<rect x="${x}" y="${zeroY - 20}" width="${barWidth}" height="40" fill="url(#hatch)" stroke="#6b7280" stroke-width="1"/>`;
+    } else {
+      svg += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" fill-opacity="0.8" rx="2"/>`;
+    }
+    
+    // Strike labels
+    if (i % 2 === 0) {
+      svg += `<text x="${x + barWidth/2}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">$${strike}</text>`;
+    }
+    
+    // Spot price marker
+    if (Math.abs(strike - data.spotPrice) < 3) {
+      svg += `<line x1="${x + barWidth/2}" y1="${padding.top}" x2="${x + barWidth/2}" y2="${height - padding.bottom}" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4,2"/>`;
+      svg += `<text x="${x + barWidth/2 + 5}" y="${padding.top + 15}" fill="#F59E0B" font-size="9" font-family="sans-serif">SPOT</text>`;
+    }
+  });
+
+  // Gamma flip arrows
+  data.gammaFlips.forEach(flip => {
+    const idx = data.strikes.indexOf(flip.strike);
+    if (idx >= 0) {
+      const x = padding.left + (idx / data.strikes.length) * chartWidth + barWidth / 2;
+      svg += `<polygon points="${x},${padding.top + 25} ${x-6},${padding.top + 35} ${x+6},${padding.top + 35}" fill="#8B5CF6"/>`;
+      svg += `<text x="${x}" y="${padding.top + 50}" text-anchor="middle" fill="#8B5CF6" font-size="8" font-weight="bold" font-family="sans-serif">PIN ${flip.percentile}th</text>`;
+    }
+  });
+
+  // Dealer Exposure Gauge
+  const gaugeX = width - padding.right + 20;
+  const gaugeY = padding.top + 40;
+  const exposureColor = data.totalDealerExposure > 0 ? '#10B981' : '#EF4444';
+  svg += `<rect x="${gaugeX}" y="${gaugeY}" width="80" height="70" fill="#1a1a2e" rx="8" stroke="${exposureColor}" stroke-width="2"/>`;
+  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">DEALER NET</text>`;
+  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 42}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold" font-family="monospace">${data.totalDealerExposure > 0 ? '+' : ''}${formatLargeNumber(data.totalDealerExposure)}</text>`;
+  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 58}" text-anchor="middle" fill="${exposureColor}" font-size="10" font-weight="bold" font-family="sans-serif">${data.totalDealerExposure > 0 ? 'LONG' : 'SHORT'}</text>`;
+
+  // Legend
+  svg += `<rect x="${padding.left}" y="${height - 50}" width="200" height="22" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
+  svg += `<rect x="${padding.left + 10}" y="${height - 43}" width="12" height="10" fill="#10B981" rx="2"/>`;
+  svg += `<text x="${padding.left + 28}" y="${height - 35}" fill="#6b7280" font-size="9" font-family="sans-serif">Long Gamma</text>`;
+  svg += `<rect x="${padding.left + 100}" y="${height - 43}" width="12" height="10" fill="#EF4444" rx="2"/>`;
+  svg += `<text x="${padding.left + 118}" y="${height - 35}" fill="#6b7280" font-size="9" font-family="sans-serif">Short Gamma</text>`;
+
+  // Interpretation
+  const maxGammaStrike = data.strikes[data.netGamma.indexOf(Math.max(...data.netGamma))];
+  const interpretation = data.totalDealerExposure > 0 
+    ? `Dealers long gamma near $${maxGammaStrike} - expect mean reversion` 
+    : 'Dealers short gamma - amplified moves likely';
+  svg += `<text x="${padding.left + 220}" y="${height - 35}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
+
+  // Timestamp
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - padding.right}" y="${height - 10}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+  svg += `<text x="${width/2}" y="${height - 10}" text-anchor="middle" fill="#374151" font-size="8" font-family="sans-serif">DARK POOL DATA | Source: Gamma Analytics</text>`;
+
+  // Hatch pattern for NaN
+  svg += `<defs><pattern id="hatch" patternUnits="userSpaceOnUse" width="4" height="4"><path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" stroke="#6b7280" stroke-width="0.5"/></pattern></defs>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockGammaExposureData(ticker: string, spotPrice: number): GammaExposureData {
+  const baseStrike = Math.round(spotPrice / 5) * 5;
+  const strikes = Array.from({ length: 20 }, (_, i) => baseStrike - 45 + i * 5);
+  
+  const netGamma = strikes.map(strike => {
+    const distFromSpot = (strike - spotPrice) / spotPrice;
+    const baseGamma = (Math.random() - 0.5) * 500000000;
+    return baseGamma * Math.exp(-Math.abs(distFromSpot) * 3);
+  });
+
+  const gammaFlips: { strike: number; percentile: number }[] = [];
+  for (let i = 1; i < netGamma.length - 1; i++) {
+    if ((netGamma[i-1] < 0 && netGamma[i] > 0) || (netGamma[i-1] > 0 && netGamma[i] < 0)) {
+      if (Math.random() > 0.5) {
+        gammaFlips.push({ strike: strikes[i], percentile: 80 + Math.floor(Math.random() * 15) });
+      }
+    }
+  }
+
+  return {
+    ticker,
+    strikes,
+    netGamma,
+    spotPrice,
+    totalDealerExposure: netGamma.reduce((a, b) => a + b, 0),
+    gammaFlips
+  };
+}
+
+// 2. HISTORICAL VS IMPLIED VOLATILITY CHART
+interface HistoricalVsImpliedVolData {
+  ticker: string;
+  dates: string[];
+  historicalVol: number[];
+  impliedVol: number[];
+  volPremiumAnomalies: { startIdx: number; endIdx: number }[];
+  currentPercentile: number;
+  asOfTimestamp?: string;
+}
+
+export function generateHistoricalVsImpliedVolSvg(data: HistoricalVsImpliedVolData): string {
+  const width = 800;
+  const height = 400;
+  const padding = { top: 60, right: 100, bottom: 60, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const allVols = [...data.historicalVol, ...data.impliedVol].filter(v => !isNaN(v));
+  const maxVol = Math.max(...allVols) * 1.1;
+  const minVol = Math.min(...allVols) * 0.9;
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Historical vs Implied Volatility</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">90-Day Comparison: 30-Day HV (Blue) vs ATM IV (Cyan)</text>`;
+
+  // Anomaly shading
+  data.volPremiumAnomalies.forEach(anomaly => {
+    const x1 = padding.left + (anomaly.startIdx / data.dates.length) * chartWidth;
+    const x2 = padding.left + (anomaly.endIdx / data.dates.length) * chartWidth;
+    svg += `<rect x="${x1}" y="${padding.top}" width="${x2 - x1}" height="${chartHeight}" fill="#EF4444" fill-opacity="0.15"/>`;
+    svg += `<text x="${(x1 + x2) / 2}" y="${padding.top + 15}" text-anchor="middle" fill="#EF4444" font-size="8" font-weight="bold" font-family="sans-serif">VOL PREMIUM ANOMALY</text>`;
+  });
+
+  // Historical Vol line
+  let hvPath = `M`;
+  data.historicalVol.forEach((vol, i) => {
+    if (!isNaN(vol)) {
+      const x = padding.left + (i / data.dates.length) * chartWidth;
+      const y = padding.top + chartHeight - ((vol - minVol) / (maxVol - minVol)) * chartHeight;
+      hvPath += `${i === 0 || isNaN(data.historicalVol[i-1]) ? 'M' : 'L'}${x},${y} `;
+    }
+  });
+  svg += `<path d="${hvPath}" fill="none" stroke="#3B82F6" stroke-width="2"/>`;
+
+  // Implied Vol line
+  let ivPath = `M`;
+  data.impliedVol.forEach((vol, i) => {
+    if (!isNaN(vol)) {
+      const x = padding.left + (i / data.dates.length) * chartWidth;
+      const y = padding.top + chartHeight - ((vol - minVol) / (maxVol - minVol)) * chartHeight;
+      ivPath += `${i === 0 || isNaN(data.impliedVol[i-1]) ? 'M' : 'L'}${x},${y} `;
+    }
+  });
+  svg += `<path d="${ivPath}" fill="none" stroke="#06B6D4" stroke-width="2"/>`;
+
+  // Percentile inset
+  svg += `<rect x="${width - padding.right + 10}" y="${padding.top}" width="80" height="60" fill="#1a1a2e" rx="6" stroke="#374151" stroke-width="1"/>`;
+  svg += `<text x="${width - padding.right + 50}" y="${padding.top + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">IV PERCENTILE</text>`;
+  const pctColor = data.currentPercentile > 80 ? '#EF4444' : data.currentPercentile < 20 ? '#10B981' : '#F59E0B';
+  svg += `<text x="${width - padding.right + 50}" y="${padding.top + 45}" text-anchor="middle" fill="${pctColor}" font-size="20" font-weight="bold" font-family="monospace">${data.currentPercentile}th</text>`;
+
+  // Legend
+  svg += `<rect x="${width - padding.right + 10}" y="${padding.top + 70}" width="80" height="55" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
+  svg += `<line x1="${width - padding.right + 20}" y1="${padding.top + 88}" x2="${width - padding.right + 40}" y2="${padding.top + 88}" stroke="#3B82F6" stroke-width="2"/>`;
+  svg += `<text x="${width - padding.right + 45}" y="${padding.top + 92}" fill="#6b7280" font-size="8" font-family="sans-serif">30d HV</text>`;
+  svg += `<line x1="${width - padding.right + 20}" y1="${padding.top + 108}" x2="${width - padding.right + 40}" y2="${padding.top + 108}" stroke="#06B6D4" stroke-width="2"/>`;
+  svg += `<text x="${width - padding.right + 45}" y="${padding.top + 112}" fill="#6b7280" font-size="8" font-family="sans-serif">ATM IV</text>`;
+
+  // X-axis dates
+  const labelInterval = Math.floor(data.dates.length / 6);
+  data.dates.forEach((date, i) => {
+    if (i % labelInterval === 0) {
+      const x = padding.left + (i / data.dates.length) * chartWidth;
+      svg += `<text x="${x}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">${date}</text>`;
+    }
+  });
+
+  // Interpretation
+  const avgSpread = data.impliedVol.reduce((a, v, i) => a + (v - data.historicalVol[i]), 0) / data.impliedVol.length;
+  const interpretation = avgSpread > 5 ? 'IV premium elevated - potential overhedge or event anticipation' : avgSpread < -3 ? 'IV discount - realized vol exceeding expectations' : 'Vol spread normal - balanced market expectations';
+  svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
+
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - padding.right}" y="${height - 15}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+  svg += `<text x="${width/2}" y="${height - 3}" text-anchor="middle" fill="#374151" font-size="8" font-family="sans-serif">DARK POOL DATA | Source: Vol Analytics</text>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockHistoricalVsImpliedVolData(ticker: string): HistoricalVsImpliedVolData {
+  const dates: string[] = [];
+  const now = new Date();
+  for (let i = 89; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    dates.push(`${d.getMonth() + 1}/${d.getDate()}`);
+  }
+
+  const baseHV = 22 + Math.random() * 8;
+  const historicalVol = dates.map(() => baseHV + (Math.random() - 0.5) * 10);
+  const impliedVol = historicalVol.map(hv => hv + 3 + (Math.random() - 0.3) * 8);
+
+  const volPremiumAnomalies: { startIdx: number; endIdx: number }[] = [];
+  for (let i = 0; i < dates.length - 10; i++) {
+    if (impliedVol[i] - historicalVol[i] > 10 && Math.random() > 0.9) {
+      volPremiumAnomalies.push({ startIdx: i, endIdx: Math.min(i + 8, dates.length - 1) });
+      i += 10;
+    }
+  }
+
+  return {
+    ticker,
+    dates,
+    historicalVol,
+    impliedVol,
+    volPremiumAnomalies,
+    currentPercentile: Math.floor(Math.random() * 40) + 55
+  };
+}
+
+// 3. GREEKS SURFACE PLOT
+interface GreeksSurfaceData {
+  ticker: string;
+  strikes: number[];
+  expiries: string[];
+  values: number[][];
+  greekType: 'delta' | 'vega';
+  spotPrice: number;
+  whaleImpactZones: { strike: number; expiry: string; tag: string }[];
+  nanZones: { strike: number; expiry: string }[];
+  asOfTimestamp?: string;
+}
+
+export function generateGreeksSurfaceSvg(data: GreeksSurfaceData): string {
+  const width = 800;
+  const height = 450;
+  const padding = { top: 60, right: 80, bottom: 70, left: 70 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const cellWidth = chartWidth / data.strikes.length;
+  const cellHeight = chartHeight / data.expiries.length;
+
+  const flatValues = data.values.flat().filter(v => !isNaN(v));
+  const maxVal = Math.max(...flatValues);
+  const minVal = Math.min(...flatValues);
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  const greekLabel = data.greekType === 'delta' ? 'Delta' : 'Vega';
+  svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} ${greekLabel} Surface</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">Strike x Expiry Contour (Hot=High ${greekLabel})</text>`;
+
+  // Heatmap cells
+  data.expiries.forEach((expiry, ei) => {
+    data.strikes.forEach((strike, si) => {
+      const val = data.values[ei][si];
+      const x = padding.left + si * cellWidth;
+      const y = padding.top + ei * cellHeight;
+
+      // Check for NaN
+      const isNan = data.nanZones.some(z => z.strike === strike && z.expiry === expiry);
+      
+      if (isNan || isNaN(val)) {
+        svg += `<rect x="${x}" y="${y}" width="${cellWidth - 1}" height="${cellHeight - 1}" fill="#1a1a2e" stroke="#374151" stroke-width="0.5"/>`;
+        svg += `<text x="${x + cellWidth/2}" y="${y + cellHeight/2 + 3}" text-anchor="middle" fill="#6b7280" font-size="7" font-family="sans-serif">NaN</text>`;
+      } else {
+        const normalized = (val - minVal) / (maxVal - minVal);
+        const r = Math.floor(normalized * 239 + 16);
+        const g = Math.floor((1 - normalized) * 100);
+        const b = Math.floor((1 - normalized) * 50);
+        svg += `<rect x="${x}" y="${y}" width="${cellWidth - 1}" height="${cellHeight - 1}" fill="rgb(${r},${g},${b})" fill-opacity="0.85"/>`;
+      }
+
+      // Whale impact circle
+      const isWhale = data.whaleImpactZones.some(z => z.strike === strike && z.expiry === expiry);
+      if (isWhale) {
+        svg += `<circle cx="${x + cellWidth/2}" cy="${y + cellHeight/2}" r="${Math.min(cellWidth, cellHeight) / 3}" fill="none" stroke="#F59E0B" stroke-width="2"/>`;
+        const whale = data.whaleImpactZones.find(z => z.strike === strike && z.expiry === expiry);
+        if (whale) {
+          svg += `<text x="${x + cellWidth/2}" y="${y + cellHeight - 3}" text-anchor="middle" fill="#F59E0B" font-size="6" font-weight="bold" font-family="sans-serif">${whale.tag}</text>`;
+        }
+      }
+    });
+  });
+
+  // Axis labels
+  data.strikes.forEach((strike, i) => {
+    if (i % 3 === 0) {
+      const x = padding.left + i * cellWidth + cellWidth / 2;
+      svg += `<text x="${x}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">$${strike}</text>`;
+    }
+  });
+
+  data.expiries.forEach((expiry, i) => {
+    const y = padding.top + i * cellHeight + cellHeight / 2;
+    svg += `<text x="${padding.left - 8}" y="${y + 3}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">${expiry}</text>`;
+  });
+
+  svg += `<text x="${width/2}" y="${height - padding.bottom + 38}" text-anchor="middle" fill="#6b7280" font-size="10" font-family="sans-serif">Strike Price</text>`;
+  svg += `<text x="15" y="${height/2}" text-anchor="middle" fill="#6b7280" font-size="10" font-family="sans-serif" transform="rotate(-90, 15, ${height/2})">Expiry</text>`;
+
+  // Color scale legend
+  svg += `<defs><linearGradient id="greekScale" x1="0%" y1="100%" x2="0%" y2="0%">`;
+  svg += `<stop offset="0%" style="stop-color:#101020"/>`;
+  svg += `<stop offset="100%" style="stop-color:#EF4444"/>`;
+  svg += `</linearGradient></defs>`;
+  svg += `<rect x="${width - padding.right + 15}" y="${padding.top}" width="20" height="${chartHeight}" fill="url(#greekScale)" rx="3"/>`;
+  svg += `<text x="${width - padding.right + 42}" y="${padding.top + 10}" fill="#6b7280" font-size="8" font-family="monospace">High</text>`;
+  svg += `<text x="${width - padding.right + 42}" y="${padding.top + chartHeight}" fill="#6b7280" font-size="8" font-family="monospace">Low</text>`;
+
+  // Interpretation
+  const maxZone = data.values.flat().indexOf(Math.max(...flatValues));
+  const interpretation = data.greekType === 'vega' 
+    ? 'Vega concentration in front-month - vol sensitivity elevated'
+    : 'Delta clustering near ATM - directional exposure focused';
+  svg += `<text x="${padding.left}" y="${height - 8}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
+
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - 10}" y="${height - 8}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockGreeksSurfaceData(ticker: string, spotPrice: number, greekType: 'delta' | 'vega' = 'vega'): GreeksSurfaceData {
+  const baseStrike = Math.round(spotPrice / 5) * 5;
+  const strikes = Array.from({ length: 12 }, (_, i) => baseStrike - 25 + i * 5);
+  const expiries = ['Jan 10', 'Jan 17', 'Jan 24', 'Feb 21', 'Mar 21', 'Jun 20'];
+
+  const values: number[][] = expiries.map((_, ei) => 
+    strikes.map((strike, si) => {
+      const moneyness = Math.abs(strike - spotPrice) / spotPrice;
+      const timeFactor = 1 / (ei + 1);
+      if (greekType === 'vega') {
+        return (1 - moneyness * 3) * timeFactor * 100 + Math.random() * 20;
+      } else {
+        return 0.5 + (strike > spotPrice ? -1 : 1) * moneyness * 2 + Math.random() * 0.2;
+      }
+    })
+  );
+
+  const whaleImpactZones: { strike: number; expiry: string; tag: string }[] = [];
+  if (Math.random() > 0.5) {
+    whaleImpactZones.push({ strike: strikes[5], expiry: expiries[1], tag: 'UW' });
+  }
+  if (Math.random() > 0.6) {
+    whaleImpactZones.push({ strike: strikes[7], expiry: expiries[0], tag: 'SWEEP' });
+  }
+
+  const nanZones: { strike: number; expiry: string }[] = [];
+  if (Math.random() > 0.7) {
+    nanZones.push({ strike: strikes[10], expiry: expiries[4] });
+  }
+
+  return { ticker, strikes, expiries, values, greekType, spotPrice, whaleImpactZones, nanZones };
+}
+
+// 4. TRADE TAPE TIMELINE
+interface TradeTapeTimelineData {
+  ticker: string;
+  times: string[];
+  cumulativePremium: number[];
+  sentiment: ('bullish' | 'bearish' | 'neutral')[];
+  whaleEvents: { timeIdx: number; premium: number; detail: string }[];
+  putCallRatio: number[];
+  asOfTimestamp?: string;
+}
+
+export function generateTradeTapeTimelineSvg(data: TradeTapeTimelineData): string {
+  const width = 800;
+  const height = 420;
+  const padding = { top: 60, right: 80, bottom: 60, left: 70 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const maxPremium = Math.max(...data.cumulativePremium) * 1.1;
+  const barWidth = chartWidth / data.times.length * 0.8;
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Options Flow Timeline</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">Intraday Cumulative Premium with Whale Events</text>`;
+
+  // Premium bars
+  data.times.forEach((time, i) => {
+    const x = padding.left + (i / data.times.length) * chartWidth;
+    const barHeight = (data.cumulativePremium[i] / maxPremium) * chartHeight;
+    const y = padding.top + chartHeight - barHeight;
+    
+    const color = data.sentiment[i] === 'bullish' ? '#10B981' : data.sentiment[i] === 'bearish' ? '#EF4444' : '#8B5CF6';
+    svg += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" fill-opacity="0.8" rx="1"/>`;
+  });
+
+  // Whale event spikes
+  data.whaleEvents.forEach(event => {
+    const x = padding.left + (event.timeIdx / data.times.length) * chartWidth + barWidth / 2;
+    const baseY = padding.top + chartHeight - (data.cumulativePremium[event.timeIdx] / maxPremium) * chartHeight;
+    
+    svg += `<line x1="${x}" y1="${baseY}" x2="${x}" y2="${padding.top + 10}" stroke="#F59E0B" stroke-width="2"/>`;
+    svg += `<circle cx="${x}" cy="${padding.top + 10}" r="8" fill="#F59E0B"/>`;
+    svg += `<text x="${x}" y="${padding.top + 14}" text-anchor="middle" fill="#000000" font-size="8" font-weight="bold" font-family="sans-serif">W</text>`;
+    svg += `<text x="${x + 12}" y="${padding.top + 28}" fill="#F59E0B" font-size="8" font-family="sans-serif">${event.detail}</text>`;
+  });
+
+  // Put/Call ratio line (secondary axis)
+  const maxRatio = Math.max(...data.putCallRatio) * 1.2;
+  let ratioPath = 'M';
+  data.putCallRatio.forEach((ratio, i) => {
+    const x = padding.left + (i / data.times.length) * chartWidth + barWidth / 2;
+    const y = padding.top + chartHeight - (ratio / maxRatio) * chartHeight;
+    ratioPath += `${i === 0 ? 'M' : 'L'}${x},${y} `;
+  });
+  svg += `<path d="${ratioPath}" fill="none" stroke="#06B6D4" stroke-width="2" stroke-dasharray="4,2"/>`;
+
+  // X-axis time labels
+  const labelInterval = Math.floor(data.times.length / 8);
+  data.times.forEach((time, i) => {
+    if (i % labelInterval === 0) {
+      const x = padding.left + (i / data.times.length) * chartWidth;
+      svg += `<text x="${x}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">${time}</text>`;
+    }
+  });
+
+  // Legend
+  svg += `<rect x="${width - padding.right + 5}" y="${padding.top}" width="70" height="80" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
+  svg += `<rect x="${width - padding.right + 15}" y="${padding.top + 12}" width="10" height="10" fill="#10B981" rx="2"/>`;
+  svg += `<text x="${width - padding.right + 30}" y="${padding.top + 20}" fill="#6b7280" font-size="8" font-family="sans-serif">Bull</text>`;
+  svg += `<rect x="${width - padding.right + 15}" y="${padding.top + 28}" width="10" height="10" fill="#EF4444" rx="2"/>`;
+  svg += `<text x="${width - padding.right + 30}" y="${padding.top + 36}" fill="#6b7280" font-size="8" font-family="sans-serif">Bear</text>`;
+  svg += `<line x1="${width - padding.right + 15}" y1="${padding.top + 54}" x2="${width - padding.right + 35}" y2="${padding.top + 54}" stroke="#06B6D4" stroke-width="2" stroke-dasharray="4,2"/>`;
+  svg += `<text x="${width - padding.right + 40}" y="${padding.top + 58}" fill="#6b7280" font-size="7" font-family="sans-serif">P/C</text>`;
+
+  // Interpretation
+  const bullishBars = data.sentiment.filter(s => s === 'bullish').length;
+  const bearishBars = data.sentiment.filter(s => s === 'bearish').length;
+  const interpretation = bullishBars > bearishBars * 1.5 ? 'Bullish flow dominant - positive premium accumulation' : bearishBars > bullishBars * 1.5 ? 'Bearish flow elevated - distribution pattern' : 'Mixed flow - consolidation likely';
+  svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
+
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - padding.right}" y="${height - 15}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+  svg += `<text x="${width/2}" y="${height - 3}" text-anchor="middle" fill="#374151" font-size="8" font-family="sans-serif">DARK POOL DATA | Source: Options Flow</text>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockTradeTapeTimelineData(ticker: string): TradeTapeTimelineData {
+  const times: string[] = [];
+  for (let h = 9; h <= 16; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      if (h === 9 && m < 30) continue;
+      if (h === 16 && m > 0) continue;
+      times.push(`${h}:${m.toString().padStart(2, '0')}`);
+    }
+  }
+
+  let cumPremium = 0;
+  const cumulativePremium = times.map(() => {
+    cumPremium += Math.random() * 5000000;
+    return cumPremium;
+  });
+
+  const sentiment = times.map(() => {
+    const r = Math.random();
+    return r > 0.6 ? 'bullish' : r > 0.3 ? 'bearish' : 'neutral';
+  }) as ('bullish' | 'bearish' | 'neutral')[];
+
+  const whaleEvents: TradeTapeTimelineData['whaleEvents'] = [];
+  if (Math.random() > 0.3) {
+    whaleEvents.push({ timeIdx: Math.floor(times.length * 0.3), premium: 5000000, detail: '$5M Sweep' });
+  }
+  if (Math.random() > 0.5) {
+    whaleEvents.push({ timeIdx: Math.floor(times.length * 0.7), premium: 3200000, detail: '$3.2M Block' });
+  }
+
+  const putCallRatio = times.map(() => 0.8 + Math.random() * 1.5);
+
+  return { ticker, times, cumulativePremium, sentiment, whaleEvents, putCallRatio };
+}
+
+// 5. SECTOR CORRELATION HEATMAP
+interface SectorCorrelationData {
+  ticker: string;
+  peers: string[];
+  correlations: number[][];
+  decouplings: { row: number; col: number; label: string }[];
+  asOfTimestamp?: string;
+}
+
+export function generateSectorCorrelationSvg(data: SectorCorrelationData): string {
+  const width = 600;
+  const height = 500;
+  const padding = { top: 80, right: 40, bottom: 60, left: 80 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const cellSize = Math.min(chartWidth / data.peers.length, chartHeight / data.peers.length);
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Sector Correlation Matrix</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">IV/Price Correlations to Sector Peers</text>`;
+
+  // Heatmap cells
+  data.peers.forEach((_, ri) => {
+    data.peers.forEach((_, ci) => {
+      const val = data.correlations[ri][ci];
+      const x = padding.left + ci * cellSize;
+      const y = padding.top + ri * cellSize;
+
+      if (isNaN(val)) {
+        svg += `<rect x="${x}" y="${y}" width="${cellSize - 2}" height="${cellSize - 2}" fill="#ffffff" fill-opacity="0.1"/>`;
+        svg += `<text x="${x + cellSize/2}" y="${y + cellSize/2 + 3}" text-anchor="middle" fill="#6b7280" font-size="8" font-family="sans-serif">NaN</text>`;
+      } else {
+        // Color scale: -1 (blue) to +1 (red)
+        const normalized = (val + 1) / 2;
+        const r = Math.floor(normalized * 239);
+        const b = Math.floor((1 - normalized) * 239);
+        svg += `<rect x="${x}" y="${y}" width="${cellSize - 2}" height="${cellSize - 2}" fill="rgb(${r},50,${b})" rx="2"/>`;
+        svg += `<text x="${x + cellSize/2}" y="${y + cellSize/2 + 4}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="bold" font-family="monospace">${val.toFixed(2)}</text>`;
+      }
+
+      // Decoupling border
+      const isDecoupling = data.decouplings.some(d => d.row === ri && d.col === ci);
+      if (isDecoupling) {
+        svg += `<rect x="${x}" y="${y}" width="${cellSize - 2}" height="${cellSize - 2}" fill="none" stroke="#F59E0B" stroke-width="3" rx="2"/>`;
+      }
+    });
+  });
+
+  // Axis labels
+  data.peers.forEach((peer, i) => {
+    const x = padding.left + i * cellSize + cellSize / 2;
+    const y = padding.top + i * cellSize + cellSize / 2;
+    svg += `<text x="${x}" y="${padding.top - 8}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif" transform="rotate(-45, ${x}, ${padding.top - 8})">${peer}</text>`;
+    svg += `<text x="${padding.left - 8}" y="${y + 3}" text-anchor="end" fill="#6b7280" font-size="9" font-family="sans-serif">${peer}</text>`;
+  });
+
+  // Color scale legend
+  svg += `<defs><linearGradient id="corrScale" x1="0%" y1="0%" x2="100%" y2="0%">`;
+  svg += `<stop offset="0%" style="stop-color:#3B82F6"/>`;
+  svg += `<stop offset="50%" style="stop-color:#374151"/>`;
+  svg += `<stop offset="100%" style="stop-color:#EF4444"/>`;
+  svg += `</linearGradient></defs>`;
+  svg += `<rect x="${padding.left}" y="${height - 35}" width="150" height="12" fill="url(#corrScale)" rx="3"/>`;
+  svg += `<text x="${padding.left}" y="${height - 40}" fill="#6b7280" font-size="8" font-family="monospace">-1</text>`;
+  svg += `<text x="${padding.left + 75}" y="${height - 40}" text-anchor="middle" fill="#6b7280" font-size="8" font-family="monospace">0</text>`;
+  svg += `<text x="${padding.left + 150}" y="${height - 40}" text-anchor="end" fill="#6b7280" font-size="8" font-family="monospace">+1</text>`;
+
+  // Decoupling note
+  if (data.decouplings.length > 0) {
+    svg += `<text x="${padding.left + 180}" y="${height - 28}" fill="#F59E0B" font-size="9" font-family="sans-serif">Unusual Decoupling - Probe Catalyst</text>`;
+  }
+
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - padding.right}" y="${height - 10}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+  svg += `<text x="${width/2}" y="${height - 10}" text-anchor="middle" fill="#374151" font-size="8" font-family="sans-serif">DARK POOL DATA | Source: Correlation Analytics</text>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockSectorCorrelationData(ticker: string): SectorCorrelationData {
+  const peers = [ticker, 'PEER1', 'PEER2', 'PEER3', 'PEER4', 'PEER5'];
+  
+  const correlations: number[][] = peers.map((_, ri) => 
+    peers.map((_, ci) => {
+      if (ri === ci) return 1.0;
+      const base = 0.4 + Math.random() * 0.5;
+      return Math.round((ri < ci ? base : base) * 100) / 100;
+    })
+  );
+
+  const decouplings: SectorCorrelationData['decouplings'] = [];
+  for (let i = 0; i < peers.length; i++) {
+    for (let j = i + 1; j < peers.length; j++) {
+      if (correlations[i][j] < -0.5 || correlations[i][j] > 0.95) {
+        decouplings.push({ row: i, col: j, label: 'Unusual' });
+      }
+    }
+  }
+
+  return { ticker, peers, correlations, decouplings };
+}
+
+// 6. MAX PAIN CHART
+interface MaxPainData {
+  ticker: string;
+  strikes: number[];
+  callOI: number[];
+  putOI: number[];
+  maxPainStrike: number;
+  spotPrice: number;
+  unusualBuildup: number[];
+  asOfTimestamp?: string;
+}
+
+export function generateMaxPainSvg(data: MaxPainData): string {
+  const width = 800;
+  const height = 400;
+  const padding = { top: 60, right: 60, bottom: 60, left: 70 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const maxOI = Math.max(...data.callOI, ...data.putOI) * 1.1;
+  const barWidth = chartWidth / data.strikes.length * 0.4;
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Max Pain Analysis</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">Stacked Call/Put OI with Dealer Neutrality Point</text>`;
+
+  // Stacked bars
+  data.strikes.forEach((strike, i) => {
+    const x = padding.left + (i / data.strikes.length) * chartWidth;
+    
+    // Put OI (bottom, red)
+    const putHeight = (data.putOI[i] / maxOI) * chartHeight;
+    const putY = padding.top + chartHeight - putHeight;
+    svg += `<rect x="${x}" y="${putY}" width="${barWidth}" height="${putHeight}" fill="#EF4444" fill-opacity="0.7"/>`;
+    
+    // Call OI (stacked on top, green)
+    const callHeight = (data.callOI[i] / maxOI) * chartHeight;
+    const callY = putY - callHeight;
+    svg += `<rect x="${x + barWidth + 2}" y="${callY}" width="${barWidth}" height="${callHeight}" fill="#10B981" fill-opacity="0.7"/>`;
+
+    // Unusual buildup shading
+    if (data.unusualBuildup[i] > 0.8) {
+      svg += `<rect x="${x - 2}" y="${padding.top}" width="${barWidth * 2 + 6}" height="${chartHeight}" fill="#EF4444" fill-opacity="0.15" rx="2"/>`;
+    }
+    
+    // Strike labels
+    if (i % 2 === 0) {
+      svg += `<text x="${x + barWidth}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">$${strike}</text>`;
+    }
+  });
+
+  // Max pain vertical line
+  const mpIdx = data.strikes.indexOf(data.maxPainStrike);
+  if (mpIdx >= 0) {
+    const mpX = padding.left + (mpIdx / data.strikes.length) * chartWidth + barWidth;
+    svg += `<line x1="${mpX}" y1="${padding.top}" x2="${mpX}" y2="${height - padding.bottom}" stroke="#F59E0B" stroke-width="3"/>`;
+    svg += `<rect x="${mpX - 50}" y="${padding.top + 5}" width="100" height="22" fill="#F59E0B" rx="4"/>`;
+    svg += `<text x="${mpX}" y="${padding.top + 20}" text-anchor="middle" fill="#000000" font-size="9" font-weight="bold" font-family="sans-serif">MAX PAIN $${data.maxPainStrike}</text>`;
+  }
+
+  // Spot price marker
+  const spotIdx = data.strikes.findIndex(s => Math.abs(s - data.spotPrice) < 3);
+  if (spotIdx >= 0) {
+    const spotX = padding.left + (spotIdx / data.strikes.length) * chartWidth + barWidth;
+    svg += `<line x1="${spotX}" y1="${padding.top + 30}" x2="${spotX}" y2="${height - padding.bottom}" stroke="#3B82F6" stroke-width="2" stroke-dasharray="4,2"/>`;
+    svg += `<text x="${spotX + 5}" y="${padding.top + 42}" fill="#3B82F6" font-size="8" font-family="sans-serif">SPOT</text>`;
+  }
+
+  // Legend
+  svg += `<rect x="${width - padding.right - 100}" y="${padding.top}" width="90" height="50" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
+  svg += `<rect x="${width - padding.right - 90}" y="${padding.top + 12}" width="12" height="10" fill="#10B981" rx="2"/>`;
+  svg += `<text x="${width - padding.right - 73}" y="${padding.top + 20}" fill="#6b7280" font-size="9" font-family="sans-serif">Call OI</text>`;
+  svg += `<rect x="${width - padding.right - 90}" y="${padding.top + 28}" width="12" height="10" fill="#EF4444" rx="2"/>`;
+  svg += `<text x="${width - padding.right - 73}" y="${padding.top + 36}" fill="#6b7280" font-size="9" font-family="sans-serif">Put OI</text>`;
+
+  // Interpretation
+  const distFromSpot = data.maxPainStrike - data.spotPrice;
+  const interpretation = Math.abs(distFromSpot) < 3 ? 'Max pain near spot - dealer neutrality achieved' : distFromSpot > 0 ? `Max pain $${distFromSpot.toFixed(0)} above spot - upward magnet` : `Max pain $${Math.abs(distFromSpot).toFixed(0)} below spot - downward pressure`;
+  svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
+
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - padding.right}" y="${height - 15}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+  svg += `<text x="${width/2}" y="${height - 3}" text-anchor="middle" fill="#374151" font-size="8" font-family="sans-serif">DARK POOL DATA | Source: OI Analytics</text>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockMaxPainData(ticker: string, spotPrice: number): MaxPainData {
+  const baseStrike = Math.round(spotPrice / 5) * 5;
+  const strikes = Array.from({ length: 15 }, (_, i) => baseStrike - 35 + i * 5);
+  
+  const callOI = strikes.map(s => {
+    const dist = s - spotPrice;
+    return Math.max(1000, 50000 * Math.exp(-Math.abs(dist) / 20) + Math.random() * 10000);
+  });
+  
+  const putOI = strikes.map(s => {
+    const dist = spotPrice - s;
+    return Math.max(1000, 45000 * Math.exp(-Math.abs(dist) / 20) + Math.random() * 10000);
+  });
+
+  // Find max pain (where total value lost is maximized for both sides)
+  let maxPainIdx = 7;
+  let maxPain = 0;
+  strikes.forEach((strike, i) => {
+    const totalPain = callOI.slice(0, i).reduce((a, b) => a + b, 0) + putOI.slice(i).reduce((a, b) => a + b, 0);
+    if (totalPain > maxPain) {
+      maxPain = totalPain;
+      maxPainIdx = i;
+    }
+  });
+
+  const unusualBuildup = strikes.map(() => Math.random());
+
+  return {
+    ticker,
+    strikes,
+    callOI,
+    putOI,
+    maxPainStrike: strikes[maxPainIdx],
+    spotPrice,
+    unusualBuildup
+  };
+}
+
+// 7. IV RANK HISTOGRAM
+interface IVRankHistogramData {
+  ticker: string;
+  bins: number[];
+  frequencies: number[];
+  currentIV: number;
+  currentPercentile: number;
+  asOfTimestamp?: string;
+}
+
+export function generateIVRankHistogramSvg(data: IVRankHistogramData): string {
+  const width = 700;
+  const height = 380;
+  const padding = { top: 60, right: 60, bottom: 60, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const maxFreq = Math.max(...data.frequencies) * 1.1;
+  const barWidth = chartWidth / data.bins.length * 0.85;
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} IV Rank Distribution</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">1-Year Percentile Histogram</text>`;
+
+  // Histogram bars
+  data.bins.forEach((bin, i) => {
+    const x = padding.left + (i / data.bins.length) * chartWidth;
+    const barHeight = (data.frequencies[i] / maxFreq) * chartHeight;
+    const y = padding.top + chartHeight - barHeight;
+    
+    // Color based on percentile range
+    const color = bin < 20 ? '#10B981' : bin > 80 ? '#EF4444' : '#3B82F6';
+    svg += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" fill-opacity="0.7" rx="1"/>`;
+    
+    // Bin labels
+    if (i % 2 === 0) {
+      svg += `<text x="${x + barWidth/2}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">${bin}%</text>`;
+    }
+  });
+
+  // Distribution curve overlay
+  let curvePath = 'M';
+  data.bins.forEach((_, i) => {
+    const x = padding.left + (i / data.bins.length) * chartWidth + barWidth / 2;
+    const y = padding.top + chartHeight - (data.frequencies[i] / maxFreq) * chartHeight;
+    curvePath += `${i === 0 ? 'M' : 'L'}${x},${y} `;
+  });
+  svg += `<path d="${curvePath}" fill="none" stroke="#ffffff" stroke-width="2" stroke-opacity="0.5"/>`;
+
+  // Current IV vertical line
+  const currentX = padding.left + (data.currentPercentile / 100) * chartWidth;
+  svg += `<line x1="${currentX}" y1="${padding.top}" x2="${currentX}" y2="${height - padding.bottom}" stroke="#F59E0B" stroke-width="3"/>`;
+  svg += `<rect x="${currentX - 60}" y="${padding.top + 5}" width="120" height="22" fill="#F59E0B" rx="4"/>`;
+  svg += `<text x="${currentX}" y="${padding.top + 20}" text-anchor="middle" fill="#000000" font-size="9" font-weight="bold" font-family="sans-serif">Current: ${data.currentPercentile}th Percentile</text>`;
+
+  // Current IV value
+  svg += `<text x="${currentX}" y="${padding.top + 40}" text-anchor="middle" fill="#F59E0B" font-size="11" font-weight="bold" font-family="monospace">IV: ${data.currentIV.toFixed(1)}%</text>`;
+
+  // Interpretation
+  const interpretation = data.currentPercentile > 85 ? 'Elevated - vol crush risk if no catalyst' : data.currentPercentile < 15 ? 'Depressed - vol expansion opportunity' : 'Normal range - balanced expectations';
+  const interpColor = data.currentPercentile > 85 ? '#EF4444' : data.currentPercentile < 15 ? '#10B981' : '#6b7280';
+  svg += `<text x="${padding.left}" y="${height - 15}" fill="${interpColor}" font-size="9" font-weight="bold" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
+
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - padding.right}" y="${height - 15}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+  svg += `<text x="${width/2}" y="${height - 3}" text-anchor="middle" fill="#374151" font-size="8" font-family="sans-serif">DARK POOL DATA | Source: IV Analytics</text>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockIVRankHistogramData(ticker: string): IVRankHistogramData {
+  const bins = Array.from({ length: 20 }, (_, i) => i * 5);
+  
+  // Normal-ish distribution centered around 40-50
+  const frequencies = bins.map(bin => {
+    const center = 45;
+    const dist = Math.abs(bin - center);
+    return Math.max(1, 30 * Math.exp(-dist * dist / 500) + Math.random() * 5);
+  });
+
+  return {
+    ticker,
+    bins,
+    frequencies,
+    currentIV: 28 + Math.random() * 15,
+    currentPercentile: 75 + Math.floor(Math.random() * 20)
+  };
+}
+
+// 8. OPTIONS VS STOCK VOLUME RATIO
+interface OptionsStockVolumeData {
+  ticker: string;
+  dates: string[];
+  optionsPremium: number[];
+  volumeRatio: number[];
+  spikeThresholds: { dateIdx: number; ratio: number }[];
+  asOfTimestamp?: string;
+}
+
+export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): string {
+  const width = 800;
+  const height = 380;
+  const padding = { top: 60, right: 80, bottom: 60, left: 70 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const maxPremium = Math.max(...data.optionsPremium) * 1.1;
+  const maxRatio = Math.max(...data.volumeRatio) * 1.1;
+  const barWidth = chartWidth / data.dates.length * 0.7;
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
+  
+  svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Options vs Stock Volume</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">30-Day Premium Volume with ADV Ratio</text>`;
+
+  // Premium bars
+  data.dates.forEach((_, i) => {
+    const x = padding.left + (i / data.dates.length) * chartWidth;
+    const barHeight = (data.optionsPremium[i] / maxPremium) * chartHeight;
+    const y = padding.top + chartHeight - barHeight;
+    
+    // Check for spike threshold
+    const isSpike = data.spikeThresholds.some(s => s.dateIdx === i);
+    const color = isSpike ? '#F59E0B' : '#3B82F6';
+    
+    svg += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" fill-opacity="0.7" rx="1"/>`;
+    
+    if (isSpike) {
+      svg += `<text x="${x + barWidth/2}" y="${y - 5}" text-anchor="middle" fill="#F59E0B" font-size="7" font-weight="bold" font-family="sans-serif">UNUSUAL</text>`;
+    }
+  });
+
+  // Volume ratio line (right axis)
+  let ratioPath = 'M';
+  data.dates.forEach((_, i) => {
+    const x = padding.left + (i / data.dates.length) * chartWidth + barWidth / 2;
+    const y = padding.top + chartHeight - (data.volumeRatio[i] / maxRatio) * chartHeight;
+    ratioPath += `${i === 0 ? 'M' : 'L'}${x},${y} `;
+  });
+  svg += `<path d="${ratioPath}" fill="none" stroke="#EF4444" stroke-width="2"/>`;
+
+  // 200% threshold line
+  const thresholdY = padding.top + chartHeight - (200 / maxRatio) * chartHeight;
+  if (thresholdY > padding.top) {
+    svg += `<line x1="${padding.left}" y1="${thresholdY}" x2="${width - padding.right}" y2="${thresholdY}" stroke="#F59E0B" stroke-width="1" stroke-dasharray="4,2"/>`;
+    svg += `<text x="${width - padding.right + 5}" y="${thresholdY + 4}" fill="#F59E0B" font-size="8" font-family="sans-serif">200%</text>`;
+  }
+
+  // X-axis labels
+  const labelInterval = Math.floor(data.dates.length / 6);
+  data.dates.forEach((date, i) => {
+    if (i % labelInterval === 0) {
+      const x = padding.left + (i / data.dates.length) * chartWidth;
+      svg += `<text x="${x}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">${date}</text>`;
+    }
+  });
+
+  // Y-axis labels
+  svg += `<text x="${padding.left - 10}" y="${padding.top + chartHeight/2}" text-anchor="end" fill="#3B82F6" font-size="9" font-family="sans-serif" transform="rotate(-90, ${padding.left - 10}, ${padding.top + chartHeight/2})">Premium ($)</text>`;
+  svg += `<text x="${width - padding.right + 10}" y="${padding.top + chartHeight/2}" fill="#EF4444" font-size="9" font-family="sans-serif" transform="rotate(90, ${width - padding.right + 10}, ${padding.top + chartHeight/2})">Ratio to ADV</text>`;
+
+  // Legend
+  svg += `<rect x="${width - padding.right - 10}" y="${padding.top}" width="85" height="50" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
+  svg += `<rect x="${width - padding.right}" y="${padding.top + 12}" width="12" height="10" fill="#3B82F6" rx="2"/>`;
+  svg += `<text x="${width - padding.right + 17}" y="${padding.top + 20}" fill="#6b7280" font-size="8" font-family="sans-serif">Premium</text>`;
+  svg += `<line x1="${width - padding.right}" y1="${padding.top + 35}" x2="${width - padding.right + 15}" y2="${padding.top + 35}" stroke="#EF4444" stroke-width="2"/>`;
+  svg += `<text x="${width - padding.right + 17}" y="${padding.top + 38}" fill="#6b7280" font-size="8" font-family="sans-serif">ADV Ratio</text>`;
+
+  // Interpretation
+  const avgRatio = data.volumeRatio.reduce((a, b) => a + b, 0) / data.volumeRatio.length;
+  const interpretation = avgRatio > 180 ? 'Options activity elevated vs equity - unusual flow signal' : avgRatio < 80 ? 'Options activity subdued - low conviction' : 'Normal options/equity relationship';
+  svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
+
+  const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  svg += `<text x="${width - padding.right}" y="${height - 15}" text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">As of: ${asOfTime} ET</text>`;
+  svg += `<text x="${width/2}" y="${height - 3}" text-anchor="middle" fill="#374151" font-size="8" font-family="sans-serif">DARK POOL DATA | Source: Volume Analytics</text>`;
+
+  svg += '</svg>';
+  return svg;
+}
+
+export function generateMockOptionsStockVolumeData(ticker: string): OptionsStockVolumeData {
+  const dates: string[] = [];
+  const now = new Date();
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    dates.push(`${d.getMonth() + 1}/${d.getDate()}`);
+  }
+
+  const optionsPremium = dates.map(() => Math.random() * 50000000 + 5000000);
+  const volumeRatio = dates.map(() => 80 + Math.random() * 150);
+
+  const spikeThresholds: { dateIdx: number; ratio: number }[] = [];
+  volumeRatio.forEach((ratio, i) => {
+    if (ratio > 200) {
+      spikeThresholds.push({ dateIdx: i, ratio });
+    }
+  });
+
+  return { ticker, dates, optionsPremium, volumeRatio, spikeThresholds };
+}
