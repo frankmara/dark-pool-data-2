@@ -213,3 +213,10 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
 - Ghostwriter config includes: inputs tab, thread structure tab, tone rules tab
 - Real API connector tests implemented for all 6 data providers
 - Auto-test all connectors on Data Feeds page load
+- **Institutional Chart Enhancements**:
+  - SessionContext utility for synchronized timestamps (createSessionContext, formatSessionTimestamp, generateSessionCandles)
+  - All 5 chart types now include "As of: [timestamp] ET" labels
+  - INTERPRETATION annotation boxes with contextual analysis on each chart
+  - Enhanced legends with clear color coding and element explanations
+  - Source attribution footers (e.g., "DARK POOL DATA | Source: Options Analytics")
+  - 5-post thread format with institutional metrics: ADV %, VWAP delta, dealer gamma positioning, IV percentiles, probability scenarios
