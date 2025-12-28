@@ -171,7 +171,63 @@ export class MemStorage implements IStorage {
       { label: "Options Flow", type: "trigger", icon: "TrendingUp", color: "warning", positionX: 350, positionY: 280, active: true },
       { label: "Volume Filter", type: "filter", icon: "Filter", color: "muted", positionX: 600, positionY: 150, active: true },
       { label: "Sentiment Check", type: "filter", icon: "Database", color: "muted", positionX: 600, positionY: 280, active: true },
-      { label: "Generate Post", type: "action", icon: "MessageSquare", color: "positive", positionX: 850, positionY: 200, active: true },
+      { 
+        label: "Institutional Research Ghostwriter", 
+        type: "llm_agent", 
+        icon: "Brain", 
+        color: "secondary", 
+        positionX: 850, 
+        positionY: 200, 
+        active: true, 
+        config: { 
+          nodeType: "ghostwriter",
+          inputs: {
+            rawEventJson: true,
+            tickerContext: {
+              float: true,
+              shortInterest: true,
+              catalysts: true,
+              analystTargets: true,
+              insiderActivity: true
+            }
+          },
+          threadStructure: {
+            tweet1_hook: "Print/sweep size, avg price, venue(s), % of ADV, directional tone",
+            tweet2_context: "Share float, short interest %, recent catalysts, analyst PT vs spot, insider activity",
+            tweet3_technicals: "Key support/resistance, volume profile POC, order flow implications, EMA stack position",
+            tweet4_scenarios: "2-3 probability-weighted outcomes + overall conviction (High/Medium/Low)"
+          },
+          toneRules: {
+            voice: "ice-cold institutional",
+            styleGuide: ["Jane Street", "Citadel research desk"],
+            forbidden: ["retail hype", "emojis in main body", "speculation without data"],
+            preferredPhrases: [
+              "notable accumulation",
+              "aggressive distribution", 
+              "likely counterparty covering",
+              "delta-positive flow",
+              "vanna/charm pressure building",
+              "gamma exposure suggests",
+              "positioning implies",
+              "risk/reward skewed"
+            ]
+          },
+          variants: {
+            neutral: { bias: 0, description: "Data-only interpretation" },
+            bullish: { bias: 1, description: "Bullish-leaning interpretation" },
+            bearish: { bias: -1, description: "Bearish-leaning interpretation" }
+          },
+          autoSelect: {
+            enabled: true,
+            criteria: ["print_delta", "price_reaction", "flow_direction"],
+            thresholds: {
+              bullishDelta: 0.3,
+              bearishDelta: -0.3
+            }
+          },
+          maxCharsPerTweet: 280
+        }
+      },
       { label: "Post to X", type: "action", icon: "Twitter", color: "primary", positionX: 1100, positionY: 150, active: true },
       { label: "Send Alert", type: "action", icon: "Bell", color: "negative", positionX: 1100, positionY: 280, active: false },
     ];

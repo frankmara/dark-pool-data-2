@@ -24,8 +24,21 @@ import {
   GripVertical,
   X,
   Check,
-  Settings
+  Settings,
+  Brain,
+  Radar,
+  Twitter,
+  FileText,
+  Zap,
+  Target,
+  BarChart3,
+  TrendingDown,
+  Minus
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 interface Connection {
   from: string;
@@ -41,10 +54,18 @@ const iconMap: Record<string, any> = {
   "Clock": Clock,
   "MessageSquare": MessageSquare,
   "Bell": Bell,
+  "Brain": Brain,
+  "Radar": Radar,
+  "Twitter": Twitter,
+  "FileText": FileText,
+  "Zap": Zap,
+  "Target": Target,
+  "BarChart3": BarChart3,
 };
 
 const nodeTypes = [
   { type: "trigger", label: "Triggers", items: [
+    { icon: "Radar", label: "Master Scanner", color: "primary" },
     { icon: "ScanSearch", label: "Dark Pool Scanner", color: "primary" },
     { icon: "TrendingUp", label: "Options Flow", color: "warning" },
     { icon: "Database", label: "Custom Data Source", color: "muted" },
@@ -54,20 +75,27 @@ const nodeTypes = [
     { icon: "Check", label: "Sentiment Check", color: "positive" },
     { icon: "Clock", label: "Time Filter", color: "secondary" },
   ]},
+  { type: "llm_agent", label: "LLM Agents", items: [
+    { icon: "Brain", label: "Research Ghostwriter", color: "secondary" },
+    { icon: "FileText", label: "Thread Composer", color: "primary" },
+    { icon: "Target", label: "Signal Analyzer", color: "warning" },
+  ]},
   { type: "action", label: "Actions", items: [
     { icon: "MessageSquare", label: "Generate Post", color: "positive" },
-    { icon: "Clock", label: "Schedule", color: "secondary" },
+    { icon: "Twitter", label: "Post to X", color: "primary" },
     { icon: "Bell", label: "Send Alert", color: "negative" },
   ]},
 ];
 
 const defaultConnections: Connection[] = [
+  { from: "1", to: "2" },
   { from: "1", to: "3" },
   { from: "2", to: "4" },
   { from: "3", to: "5" },
-  { from: "4", to: "5" },
+  { from: "4", to: "6" },
   { from: "5", to: "6" },
-  { from: "5", to: "7" },
+  { from: "6", to: "7" },
+  { from: "6", to: "8" },
 ];
 
 export default function WorkflowCanvas() {
@@ -348,8 +376,8 @@ export default function WorkflowCanvas() {
         </Card>
 
         {selectedNode && (
-          <Card className="w-72 flex-shrink-0" data-testid="card-node-settings">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
+          <Card className="w-80 flex-shrink-0 overflow-hidden flex flex-col" data-testid="card-node-settings">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2 flex-shrink-0">
               <CardTitle className="text-base">Node Settings</CardTitle>
               <Button 
                 variant="ghost" 
@@ -360,65 +388,245 @@ export default function WorkflowCanvas() {
                 <X className="w-4 h-4" />
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {(() => {
-                const node = nodes.find(n => n.id === selectedNode);
-                if (!node) return null;
-                const Icon = iconMap[node.icon || "Database"] || Database;
-                return (
-                  <>
-                    <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50" data-testid="selected-node-info">
-                      <div className={`w-10 h-10 rounded flex items-center justify-center bg-${node.color}/10`}>
-                        <Icon className={`w-5 h-5 text-${node.color}`} />
+            <ScrollArea className="flex-1">
+              <CardContent className="space-y-4 pb-4">
+                {(() => {
+                  const node = nodes.find(n => n.id === selectedNode);
+                  if (!node) return null;
+                  const Icon = iconMap[node.icon || "Database"] || Database;
+                  const config = node.config as any;
+                  const isGhostwriter = node.type === "llm_agent" && config?.nodeType === "ghostwriter";
+                  
+                  return (
+                    <>
+                      <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50" data-testid="selected-node-info">
+                        <div className={`w-10 h-10 rounded flex items-center justify-center bg-${node.color}/10`}>
+                          <Icon className={`w-5 h-5 text-${node.color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate" data-testid="text-selected-node-label">{node.label}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{node.type === "llm_agent" ? "LLM Agent" : node.type}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium" data-testid="text-selected-node-label">{node.label}</p>
-                        <p className="text-xs text-muted-foreground capitalize">{node.type}</p>
+                      
+                      <div className="flex items-center justify-between" data-testid="node-status">
+                        <span className="text-sm">Enabled</span>
+                        <Switch 
+                          checked={node.active || false}
+                          onCheckedChange={(checked) => {
+                            updateNodeMutation.mutate({
+                              id: node.id,
+                              updates: { active: checked }
+                            });
+                          }}
+                          data-testid="switch-node-active"
+                        />
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between" data-testid="node-status">
-                      <span className="text-sm">Enabled</span>
-                      <Badge 
-                        variant={node.active ? "default" : "secondary"}
-                        className={node.active ? "bg-positive/20 text-positive" : ""}
-                        data-testid="badge-node-active"
+
+                      {isGhostwriter ? (
+                        <Tabs defaultValue="inputs" className="w-full">
+                          <TabsList className="w-full grid grid-cols-3">
+                            <TabsTrigger value="inputs" className="text-xs" data-testid="tab-inputs">Inputs</TabsTrigger>
+                            <TabsTrigger value="thread" className="text-xs" data-testid="tab-thread">Thread</TabsTrigger>
+                            <TabsTrigger value="tone" className="text-xs" data-testid="tab-tone">Tone</TabsTrigger>
+                          </TabsList>
+                          
+                          <TabsContent value="inputs" className="space-y-3 mt-3">
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Data Sources</p>
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+                                  <div className="flex items-center gap-2">
+                                    <Database className="w-3 h-3 text-muted-foreground" />
+                                    <span className="text-xs">Raw Event JSON</span>
+                                  </div>
+                                  <Badge variant="outline" className="text-[10px]">Required</Badge>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Ticker Context</p>
+                              <div className="space-y-1.5">
+                                {[
+                                  { key: "float", label: "Share Float" },
+                                  { key: "shortInterest", label: "Short Interest %" },
+                                  { key: "catalysts", label: "Recent Catalysts" },
+                                  { key: "analystTargets", label: "Analyst PT vs Spot" },
+                                  { key: "insiderActivity", label: "Insider Activity" }
+                                ].map((item) => (
+                                  <div key={item.key} className="flex items-center justify-between p-2 rounded bg-muted/30">
+                                    <span className="text-xs">{item.label}</span>
+                                    <Switch 
+                                      checked={config?.inputs?.tickerContext?.[item.key] ?? true} 
+                                      className="scale-75"
+                                      data-testid={`switch-context-${item.key}`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="thread" className="space-y-3 mt-3">
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">4-Part Thread Structure</p>
+                              <div className="space-y-2">
+                                <div className="p-2 rounded bg-muted/30 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-[10px] font-mono">1</Badge>
+                                    <span className="text-xs font-medium">Hook</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground pl-6">
+                                    Print/sweep size, avg price, venue(s), % of ADV, directional tone
+                                  </p>
+                                </div>
+                                
+                                <div className="p-2 rounded bg-muted/30 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-[10px] font-mono">2</Badge>
+                                    <span className="text-xs font-medium">Context</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground pl-6">
+                                    Float, SI%, catalysts, analyst PT vs spot, insider activity
+                                  </p>
+                                </div>
+                                
+                                <div className="p-2 rounded bg-muted/30 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-[10px] font-mono">3</Badge>
+                                    <span className="text-xs font-medium">Technicals</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground pl-6">
+                                    Support/resistance, volume POC, order flow, EMA stack
+                                  </p>
+                                </div>
+                                
+                                <div className="p-2 rounded bg-muted/30 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-[10px] font-mono">4</Badge>
+                                    <span className="text-xs font-medium">Scenarios</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground pl-6">
+                                    2-3 probability-weighted outcomes + conviction level
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Variant Generation</p>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                <div className="p-2 rounded bg-muted/30 text-center">
+                                  <Minus className="w-3 h-3 mx-auto mb-1 text-muted-foreground" />
+                                  <span className="text-[10px]">Neutral</span>
+                                </div>
+                                <div className="p-2 rounded bg-positive/10 text-center border border-positive/20">
+                                  <TrendingUp className="w-3 h-3 mx-auto mb-1 text-positive" />
+                                  <span className="text-[10px] text-positive">Bullish</span>
+                                </div>
+                                <div className="p-2 rounded bg-negative/10 text-center border border-negative/20">
+                                  <TrendingDown className="w-3 h-3 mx-auto mb-1 text-negative" />
+                                  <span className="text-[10px] text-negative">Bearish</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+                                <span className="text-xs">Auto-select best variant</span>
+                                <Switch 
+                                  checked={config?.autoSelect?.enabled ?? true}
+                                  className="scale-75"
+                                  data-testid="switch-auto-select"
+                                />
+                              </div>
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="tone" className="space-y-3 mt-3">
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Voice Profile</p>
+                              <div className="p-3 rounded bg-muted/30 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Brain className="w-4 h-4 text-secondary" />
+                                  <span className="text-xs font-medium">Ice-Cold Institutional</span>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">
+                                  Jane Street / Citadel research desk style
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-muted-foreground">Preferred Phrases</p>
+                              <div className="flex flex-wrap gap-1">
+                                {(config?.toneRules?.preferredPhrases || [
+                                  "notable accumulation",
+                                  "aggressive distribution",
+                                  "delta-positive flow",
+                                  "vanna/charm pressure"
+                                ]).slice(0, 6).map((phrase: string, idx: number) => (
+                                  <Badge key={idx} variant="secondary" className="text-[9px] font-mono">
+                                    {phrase}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-wider text-negative/80">Forbidden</p>
+                              <div className="space-y-1">
+                                {["Retail hype language", "Emojis in main body", "Speculation without data"].map((item, idx) => (
+                                  <div key={idx} className="flex items-center gap-2 p-1.5 rounded bg-negative/5">
+                                    <X className="w-3 h-3 text-negative" />
+                                    <span className="text-[10px] text-negative/80">{item}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <Separator />
+                            
+                            <div className="p-2 rounded bg-muted/30">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs">Max chars per tweet</span>
+                                <Badge variant="outline" className="font-mono text-[10px]">280</Badge>
+                              </div>
+                            </div>
+                          </TabsContent>
+                        </Tabs>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-xs uppercase tracking-wider text-muted-foreground">Configuration</p>
+                          <div className="p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
+                            {node.type === "trigger" && "Trigger nodes initiate workflows based on market events."}
+                            {node.type === "filter" && "Filter nodes process and filter incoming data streams."}
+                            {node.type === "action" && "Action nodes execute outputs like posts or alerts."}
+                            {node.type === "llm_agent" && "LLM Agent nodes use AI to generate content."}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <Button 
+                        variant="outline" 
+                        className="w-full" 
+                        size="sm"
+                        data-testid="button-configure-node"
                       >
-                        {node.active ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Configuration</p>
-                      <div className="p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
-                        Node-specific settings would appear here based on the node type.
-                      </div>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      className="w-full" 
-                      size="sm"
-                      data-testid="button-configure-node"
-                    >
-                      <Settings className="w-4 h-4 mr-2" />
-                      Configure
-                    </Button>
-                    <Button 
-                      variant={node.active ? "secondary" : "default"} 
-                      className="w-full" 
-                      size="sm"
-                      onClick={() => {
-                        updateNodeMutation.mutate({
-                          id: node.id,
-                          updates: { active: !node.active }
-                        });
-                      }}
-                      data-testid="button-toggle-node"
-                    >
-                      {node.active ? "Disable Node" : "Enable Node"}
-                    </Button>
-                  </>
-                );
-              })()}
-            </CardContent>
+                        <Settings className="w-4 h-4 mr-2" />
+                        Advanced Settings
+                      </Button>
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </ScrollArea>
           </Card>
         )}
       </div>

@@ -72,10 +72,32 @@ A fully automated workstation for institutional-grade dark pool and unusual opti
 
 ### 6. Visual Workflow Canvas
 - Draggable node-based interface
-- Node library (Triggers, Filters, Actions)
+- Node library (Triggers, Filters, LLM Agents, Actions)
 - Animated connection lines
 - Zoom controls and minimap
 - Node configuration panel
+
+### 7. Institutional Research Ghostwriter (LLM Agent Node)
+A specialized LLM agent node that generates institutional-grade 4-part X threads from scanner events.
+
+**Inputs:**
+- Raw event JSON from Master Scanner
+- Ticker context (float, SI%, catalysts, analyst targets, insider activity)
+
+**Thread Structure (each tweet < 280 chars):**
+1. **Hook**: Print/sweep size, avg price, venue(s), % of ADV, directional tone
+2. **Context**: Share float, short interest %, recent catalysts, analyst PT vs spot
+3. **Technicals**: Key support/resistance, volume profile POC, order flow implications
+4. **Scenarios**: 2-3 probability-weighted outcomes + conviction level (High/Medium/Low)
+
+**Tone Rules:**
+- Ice-cold institutional voice (Jane Street / Citadel research desk style)
+- Zero retail hype, no emojis in main body
+- Preferred phrases: "notable accumulation", "aggressive distribution", "delta-positive flow", "vanna/charm pressure building"
+
+**Variant Generation:**
+- Generates 3 variants per event: Neutral, Bullish, Bearish
+- Auto-selects best variant based on inferred direction from print/sweep delta + price reaction
 
 ## Design System
 - **Theme**: Dark finance professional (deep navy blues, blacks)
@@ -109,6 +131,11 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
 - Integrated all frontend pages with backend APIs using react-query
 - Global toggle panel now persists automation settings to backend
 - Master toggle cascade logic: OFF disables all, ON re-enables Dark Pool and Options scanners
-- Workflow nodes seeded with 7 demo nodes displayed on canvas
+- Workflow nodes seeded with 8 demo nodes displayed on canvas (including Ghostwriter)
 - Comprehensive data-testid attributes added across all components
 - All pages verified working through automated end-to-end testing
+- Added Institutional Research Ghostwriter LLM agent node with full configuration panel
+- Node library updated with LLM Agents category (Ghostwriter, Thread Composer, Signal Analyzer)
+- Ghostwriter config includes: inputs tab, thread structure tab, tone rules tab
+- Real API connector tests implemented for all 6 data providers
+- Auto-test all connectors on Data Feeds page load
