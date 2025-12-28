@@ -26,7 +26,15 @@ import {
 import { 
   generateChartSvg, 
   generateFlowSummarySvg,
-  generateMockCandles 
+  generateMockCandles,
+  generateVolatilitySmileSvg,
+  generateOptionsFlowHeatmapSvg,
+  generatePutCallOILadderSvg,
+  generateIVTermStructureSvg,
+  generateMockVolatilitySmileData,
+  generateMockOptionsFlowData,
+  generateMockPutCallOIData,
+  generateMockIVTermStructureData
 } from "./chart-generator";
 
 const scannerConfigUpdateSchema = z.object({
@@ -841,23 +849,28 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     thread = [
       {
         index: 1,
-        content: `Notable ${optionType} sweep detected on $${ticker}. ${premium} premium at ${strike} strike, ${expiry} expiry. Volume ${volume} vs OI ${oi}. Delta-positive flow building.`,
+        content: `1/5 Institutional Alert: Anomalous ${optionType} sweep via @unusual_whales. $${ticker} - ${premium} premium at $${strike} strike, ${expiry} expiry. Volume ${volume} vs OI ${oi}. Delta-positive flow building.`,
         type: 'hook'
       },
       {
         index: 2,
-        content: `Context: $${ticker} showing aggressive ${optionType === 'CALL' ? 'bullish' : 'bearish'} positioning. Premium concentration at ${strike} suggests institutional accumulation. Vol/OI ratio indicates fresh positioning.`,
+        content: `2/5 Options Context: Put/call OI delta skewed. 25-delta risk-reversal at elevated levels. Flow breakdown: ${optionType === 'CALL' ? '70% bullish' : '65% bearish'} premium. Unusuality: 90th percentile volume concentration.`,
         type: 'context'
       },
       {
         index: 3,
-        content: `Technical setup: Price testing key levels. Gamma exposure concentrated near ${strike}. Vanna/charm pressure ${optionType === 'CALL' ? 'supportive' : 'resistive'} into expiry. Order flow confirms directional bias.`,
+        content: `3/5 Technical Context: Price testing key ${optionType === 'CALL' ? 'resistance' : 'support'} cluster. Gamma exposure concentrated near ${strike}. Vanna/charm pressure ${optionType === 'CALL' ? 'supportive' : 'resistive'} into expiry. Order flow confirms directional bias.`,
         type: 'technicals'
       },
       {
         index: 4,
-        content: `Scenarios: 60% probability of move toward ${strike} by expiry. 30% consolidation near current levels. 10% reversal risk. Overall conviction: ${conviction.charAt(0).toUpperCase() + conviction.slice(1)}.`,
-        type: 'scenarios'
+        content: `4/5 Volatility Analysis: IV term structure elevated. 25-delta skew shows ${optionType === 'CALL' ? 'call' : 'put'}-side premium. Front-month IV in 85th percentile. Scenarios: 60% continuation, 30% consolidation, 10% reversal.`,
+        type: 'volatility'
+      },
+      {
+        index: 5,
+        content: `5/5 Broader Implications: Monitor for earnings/macro catalysts. Not advice - due diligence required. Conviction: ${conviction.charAt(0).toUpperCase() + conviction.slice(1)}. Sources: Unusual Whales API, dark pool scanners. #InstitutionalResearch #OptionsFlow`,
+        type: 'implications'
       }
     ];
   } else {
@@ -868,23 +881,28 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     thread = [
       {
         index: 1,
-        content: `Dark pool print: $${ticker} - ${volume}M shares at $${price}. ${flowType} signal detected. Print represents notable % of ADV. Directional tone: ${sentiment}.`,
+        content: `1/5 Institutional Alert: Anomalous dark pool print detected. $${ticker} - ${volume}M shares at $${price}. ${flowType} signal ~8% of ADV. Directional tone: ${sentiment}. Neutral alignment with volume POC.`,
         type: 'hook'
       },
       {
         index: 2,
-        content: `Context: $${ticker} institutional flow analysis. ${flowType === 'Accumulation' ? 'Notable accumulation' : 'Aggressive distribution'} pattern emerging. Block characteristics suggest smart money positioning.`,
+        content: `2/5 Options Integration via @unusual_whales: Put/call OI delta skewed. 25-delta risk-reversal at 6-month ${sentiment === 'bearish' ? 'high' : 'low'}. Flow: ${sentiment === 'bullish' ? '65% bullish' : '60% bearish'} premium. Unusuality: 90th percentile volume.`,
         type: 'context'
       },
       {
         index: 3,
-        content: `Technical setup: Dark pool print aligns with volume profile POC. Key support/resistance levels being tested. EMA stack ${sentiment === 'bullish' ? 'supportive' : 'resistive'}. VWAP deviation notable.`,
+        content: `3/5 Technical Context: Print near ${sentiment === 'bullish' ? 'supportive' : 'resistive'} EMA cluster. Scenarios: Primary - ${sentiment === 'bullish' ? 'accumulation' : 'distribution'} (45% prob); Secondary - consolidation (40%); Tail - reversal (15%). Conviction: ${conviction.charAt(0).toUpperCase() + conviction.slice(1)}.`,
         type: 'technicals'
       },
       {
         index: 4,
-        content: `Scenarios: Primary thesis ${sentiment === 'bullish' ? 'continuation higher' : 'further distribution'} (50%). Secondary: range consolidation (35%). Tail risk: reversal (15%). Conviction: ${conviction.charAt(0).toUpperCase() + conviction.slice(1)}.`,
-        type: 'scenarios'
+        content: `4/5 Visual Analytics: Volatility smile shows ${sentiment === 'bearish' ? 'put' : 'call'}-side skew. IV changes ranked. Select data points flagged - likely off-exchange. Further probe recommended.`,
+        type: 'analytics'
+      },
+      {
+        index: 5,
+        content: `5/5 Broader Implications: Monitor for year-end effects. Not advice - due diligence required. Sources: Unusual Whales API, dark pool scanners. #InstitutionalResearch #DarkPools`,
+        type: 'implications'
       }
     ];
   }
@@ -934,6 +952,19 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     conviction: conviction as 'high' | 'medium' | 'low',
     venue: isOptions ? undefined : (data.venue || 'DARK')
   });
+
+  // Generate institutional analytics charts
+  const smileData = generateMockVolatilitySmileData(ticker, basePrice);
+  const volatilitySmileSvg = generateVolatilitySmileSvg(smileData);
+
+  const heatmapData = generateMockOptionsFlowData(ticker, basePrice);
+  const optionsFlowHeatmapSvg = generateOptionsFlowHeatmapSvg(heatmapData);
+
+  const oiData = generateMockPutCallOIData(ticker, basePrice);
+  const putCallOILadderSvg = generatePutCallOILadderSvg(oiData);
+
+  const ivData = generateMockIVTermStructureData(ticker);
+  const ivTermStructureSvg = generateIVTermStructureSvg(ivData);
   
   return {
     ticker,
@@ -947,6 +978,10 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     engagement,
     chartSvg,
     flowSummarySvg,
+    volatilitySmileSvg,
+    optionsFlowHeatmapSvg,
+    putCallOILadderSvg,
+    ivTermStructureSvg,
     isLiveData
   };
 }

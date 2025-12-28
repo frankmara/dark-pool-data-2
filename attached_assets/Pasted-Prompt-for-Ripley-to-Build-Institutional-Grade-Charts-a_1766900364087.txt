@@ -1,0 +1,41 @@
+Prompt for Ripley to Build Institutional-Grade Charts and Visuals
+"Ripley, using live or simulated data from the Unusual Whales API (including options flow, premiums, strikes, expiries, sentiment tags like sweep/block, put/call ratios, and dark pool integrations), construct a comprehensive institutional-grade analytics dashboard. Focus on highlighting 'unusuality' through anomalies like extreme skew, IV spikes, or outsized volumes. Generate the following synchronized charts in a dark-mode Bloomberg-style layout, high-resolution, with legends, timestamps, percentile rankings for anomalies, and explicit handling of NaN/missing data as gray hatched areas with overlays like 'Data Gap – Potential Off-Exchange Activity, Further Probe Required'. Ensure all visuals are exportable as images for posting:
+
+Volatility Smile Chart: Plot implied volatility vs. strike prices for a selected expiry (e.g., near-term 7-30 DTE), overlay current vs. prior day/week in different lines (bold current in cyan, faded priors), highlight extreme skew with arrows and labels like 'Unusual Put-Side Elevation – 95th Percentile'.
+Implied Volatility Term Structure Waterfall: Show IV by expiry dates as bars or lines, with 24-hour changes in a secondary panel ranked by percentile (shade 90th+ in red for unusuality), include a gauge for overall IV change.
+Options Flow Heatmap: Grid of strikes vs. expiries, cells sized by premium volume, colored by sentiment (green bullish, red bearish, purple complex/neutral), circle outliers with details like premium amount, contract count, and tags from Unusual Whales.
+Risk-Reversal Skew Line Chart: 25-delta skew over 30 days, mark today's value if extreme with icons and notes like 'Highest in 12 Months – Potential Hedging Signal'.
+Put/Call Open Interest Delta Ladder: Bar chart of OI changes by strike, highlight spikes, show put/call ratio as an inset gauge flashing 'EXTREME' for ratios >3:1 or <1:3.
+Dark Pool Volume Profile: Candlestick or ladder with dark pool prints overlaid, mark notable % of ADV with arrows, handle NaNs as dashed lines.
+
+Once built, auto-generate tweet-ready images of each chart and a full dashboard composite. Then, compile them into example institutional-grade X threads (5-7 posts) with neutral, data-driven language, avoiding hype, including calls for further research due to data gaps."
+Additional Prompts for Specific Chart Builds (Feed These to Ripley Individually if Needed)
+
+For Volatility Smile: "Build a volatility smile chart from Unusual Whales data: X-axis strikes (moneyness scale), Y-axis IV percentages; curve for today in bold, priors dotted; flag anomalies like smile inversion or fat tails with red highlights and percentile labels."
+For IV Changes: "Create an IV change bar chart: Expiries on X, delta IV on Y; color-code increases (red up, green down); overlay historical avg and shade unusual deviations (e.g., >2 std devs)."
+For Options Valuation: "Generate an option valuation surface: 3D plot or contour map of theoretical prices vs. strike/time-to-expiry, using Black-Scholes or binomial inputs from Unusual Whales; highlight mispricings or unusual valuations with contours."
+For Unusuality Representation: "Design a composite 'Unusuality Score' radial chart: Spokes for metrics like volume percentile, skew extreme, IV spike, put/call imbalance; fill to show overall anomaly level (e.g., 85/100), with whale icons on high spokes."
+
+All the Different Information That Should Be Posted (As a Reader, What I'd Want to Know)
+If I were a reader following institutional-grade research on options flow and dark pools, I'd expect comprehensive, neutral coverage pulling from Unusual Whales data. Post the following elements in threads or standalone tweets:
+
+Raw Data Summary: Key stats like total premium flow, put/call ratio, top strikes/expiries, sentiment breakdown (e.g., % bullish/bearish).
+Anomaly Highlights: Percentile rankings for volume, IV changes, skew (e.g., "IV spike in 95th percentile vs. 30-day history").
+Contextual Analysis: Technical setup (e.g., alignment with EMAs, VWAP), scenarios with probabilities (primary/secondary/tail risk), conviction level (low/medium/high).
+Data Gaps and Caveats: Explicit mentions of NaNs or missing info, with suggestions for further investigation (e.g., FINRA queries).
+Broader Market Ties: Links to macro factors (e.g., sector trends, earnings cycles) without speculation.
+Visuals: Embedded chart images as described above, with alt-text for accessibility.
+Recommendations: Neutral monitoring advice, not trading signals; e.g., "Track lit exchange follow-through."
+Sources: Watermark with Unusual Whales, timestamp data.
+
+This ensures depth: readers get visuals for quick insights, data for verification, and analysis for context.
+Example Institutional-Grade Tweet Examples
+Here are properly formatted examples (as X posts or threads). Use placeholders like [$TICKER] for generality. These are neutral, data-focused, with thread structure.
+Standalone Tweet Example:
+"Unusual options flow detected via @unusual_whales: Elevated put/call premium ratio at 2.5:1 (85th percentile). Front-month IV up 10% WoW. Heatmap shows bearish sweeps at OTM strikes. Data gaps noted in OI reporting—suggest cross-check with FINRA. #OptionsFlow [Embedded Heatmap Image]"
+Thread Example (5/5 Format):
+1/5: Institutional Alert: Anomalous dark pool print via integrated feeds. Size: [Large Block], ~8% of ADV. Neutral tone, aligning with volume POC. Current IV term structure elevated. [Embedded Candlestick Chart with Print Overlay]
+2/5: Options Integration (@unusual_whales): Put/call OI delta skewed, 25-delta risk-reversal at 6-month high. Flow breakdown: 60% bearish premium. Unusuality: 90th percentile volume. [Embedded Skew Line Chart]
+3/5: Technical Context: Print near resistive EMA cluster. Scenarios: Primary—distribution (45% prob.); Secondary—consolidation (40%); Tail—reversal (15%). Conviction: Medium, pending flow confirmation. [Embedded Volume Profile Ladder]
+4/5: Visual Analytics: Volatility smile shows put-side smile, IV changes ranked. NaN in select data points flagged—likely off-exchange. Further probe recommended. [Embedded Volatility Smile and IV Waterfall Composite]
+5/5: Broader Implications: Monitor for year-end effects. Not advice—due diligence required. Sources: Unusual Whales API, dark pool scanners. #InstitutionalResearch #DarkPools [Embedded Full Dashboard Image]737msExpert

@@ -72,7 +72,38 @@ function TweetCard({ post }: TweetCardProps) {
   const engagement = post.engagement as any;
   const chartSvg = (post as any).chartSvg as string | undefined;
   const flowSummarySvg = (post as any).flowSummarySvg as string | undefined;
+  const volatilitySmileSvg = (post as any).volatilitySmileSvg as string | undefined;
+  const optionsFlowHeatmapSvg = (post as any).optionsFlowHeatmapSvg as string | undefined;
+  const putCallOILadderSvg = (post as any).putCallOILadderSvg as string | undefined;
+  const ivTermStructureSvg = (post as any).ivTermStructureSvg as string | undefined;
   const isLiveData = (post as any).isLiveData as boolean | undefined;
+
+  const getChartForIndex = (idx: number): string | undefined => {
+    switch (idx) {
+      case 0: return chartSvg;
+      case 1: return optionsFlowHeatmapSvg;
+      case 2: return putCallOILadderSvg;
+      case 3: return volatilitySmileSvg;
+      case 4: return ivTermStructureSvg;
+      default: return undefined;
+    }
+  };
+
+  const getSecondaryChartForIndex = (idx: number): string | undefined => {
+    if (idx === 1) return flowSummarySvg;
+    return undefined;
+  };
+
+  const getChartLabel = (idx: number): string => {
+    switch (idx) {
+      case 0: return 'Price Chart with Dark Pool Print';
+      case 1: return 'Options Flow Heatmap';
+      case 2: return 'Put/Call OI Delta Ladder';
+      case 3: return 'Volatility Smile Analysis';
+      case 4: return 'IV Term Structure with 24h Changes';
+      default: return '';
+    }
+  };
   
   const getSentimentIcon = () => {
     switch (post.sentiment) {
@@ -141,19 +172,18 @@ function TweetCard({ post }: TweetCardProps) {
                 {tweet.content}
               </p>
               
-              {idx === 0 && chartSvg && (
+              {getChartForIndex(idx) && (
                 <div 
                   className="mt-3 rounded-lg border border-border overflow-hidden"
-                  dangerouslySetInnerHTML={{ __html: chartSvg }}
-                  data-testid="chart-image"
+                  dangerouslySetInnerHTML={{ __html: getChartForIndex(idx)! }}
+                  data-testid={`chart-image-${idx}`}
                 />
               )}
-              
-              {idx === 1 && flowSummarySvg && (
+              {getSecondaryChartForIndex(idx) && (
                 <div 
-                  className="mt-3 rounded-lg border border-border overflow-hidden"
-                  dangerouslySetInnerHTML={{ __html: flowSummarySvg }}
-                  data-testid="flow-summary-image"
+                  className="mt-2 rounded-lg border border-border overflow-hidden"
+                  dangerouslySetInnerHTML={{ __html: getSecondaryChartForIndex(idx)! }}
+                  data-testid={`chart-secondary-${idx}`}
                 />
               )}
               
