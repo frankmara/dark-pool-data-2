@@ -121,14 +121,38 @@ function TweetCard({ post }: TweetCardProps) {
 
   const getChartLabel = (idx: number): string => {
     switch (idx) {
-      case 0: return 'Options Flow Heatmap + Flow Summary';
-      case 1: return 'Historical vs Implied Volatility + Smile';
-      case 2: return 'Greeks Surface + OI Ladder';
+      case 0: return 'Options Flow Heatmap';
+      case 1: return 'Historical vs Implied Vol';
+      case 2: return 'Greeks Surface';
       case 3: return 'Gamma Exposure';
       case 4: return 'Trade Tape Timeline';
-      case 5: return 'Sector Correlation Heatmap';
-      case 6: return 'Max Pain + IV Rank Histogram';
-      case 7: return 'Options vs Stock Volume Ratio';
+      case 5: return 'Sector Correlation';
+      case 6: return 'Max Pain Analysis';
+      case 7: return 'Options/Stock Volume';
+      default: return '';
+    }
+  };
+
+  const getChartExplanation = (idx: number): string => {
+    switch (idx) {
+      case 0: return 'Strike/expiry premium concentration - red=puts, green=calls';
+      case 1: return 'IV premium vs realized vol - shaded areas signal mispricing';
+      case 2: return 'Vega exposure across strikes/expiries - bright=high sensitivity';
+      case 3: return 'Dealer hedging levels - bars show net gamma per strike';
+      case 4: return 'Cumulative premium flow - spikes mark whale activity';
+      case 5: return 'Cross-correlation with peers - yellow borders=decoupling';
+      case 6: return 'OI distribution showing dealer neutrality point';
+      case 7: return 'Options premium vs underlying volume ratio';
+      default: return '';
+    }
+  };
+
+  const getSecondaryChartLabel = (idx: number): string => {
+    switch (idx) {
+      case 0: return 'Flow Summary Card';
+      case 1: return 'Volatility Smile (skew analysis)';
+      case 2: return 'Put/Call OI Delta Ladder';
+      case 6: return 'IV Rank Distribution (1yr percentile)';
       default: return '';
     }
   };
@@ -201,18 +225,27 @@ function TweetCard({ post }: TweetCardProps) {
               </p>
               
               {getChartForIndex(idx) && (
-                <div 
-                  className="mt-3 rounded-lg border border-border overflow-hidden"
-                  dangerouslySetInnerHTML={{ __html: getChartForIndex(idx)! }}
-                  data-testid={`chart-image-${idx}`}
-                />
+                <div className="mt-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium text-muted-foreground">{getChartLabel(idx)}</span>
+                    <span className="text-xs text-muted-foreground/60">{getChartExplanation(idx)}</span>
+                  </div>
+                  <div 
+                    className="rounded-lg border border-border overflow-hidden"
+                    dangerouslySetInnerHTML={{ __html: getChartForIndex(idx)! }}
+                    data-testid={`chart-image-${idx}`}
+                  />
+                </div>
               )}
               {getSecondaryChartForIndex(idx) && (
-                <div 
-                  className="mt-2 rounded-lg border border-border overflow-hidden"
-                  dangerouslySetInnerHTML={{ __html: getSecondaryChartForIndex(idx)! }}
-                  data-testid={`chart-secondary-${idx}`}
-                />
+                <div className="mt-2">
+                  <span className="text-xs text-muted-foreground/60 mb-1 block">{getSecondaryChartLabel(idx)}</span>
+                  <div 
+                    className="rounded-lg border border-border overflow-hidden"
+                    dangerouslySetInnerHTML={{ __html: getSecondaryChartForIndex(idx)! }}
+                    data-testid={`chart-secondary-${idx}`}
+                  />
+                </div>
               )}
               
               {idx === 0 && (
