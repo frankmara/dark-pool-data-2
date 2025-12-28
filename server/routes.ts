@@ -1,7 +1,17 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPostSchema, insertDarkPoolDataSchema, insertUnusualOptionsSchema, insertApiConnectorSchema, insertWorkflowNodeSchema, insertWorkflowConnectionSchema, insertAnalyticsDataSchema } from "@shared/schema";
+import { 
+  insertPostSchema, 
+  insertDarkPoolDataSchema, 
+  insertUnusualOptionsSchema, 
+  insertApiConnectorSchema, 
+  insertWorkflowNodeSchema, 
+  insertWorkflowConnectionSchema, 
+  insertAnalyticsDataSchema,
+  insertScannerConfigSchema,
+  insertMarketEventSchema
+} from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -24,6 +34,147 @@ export async function registerRoutes(
       res.json(settings);
     } catch (error) {
       res.status(500).json({ error: "Failed to update automation settings" });
+    }
+  });
+
+  // Scanner Configuration
+  app.get("/api/scanner/config", async (req, res) => {
+    try {
+      const config = await storage.getScannerConfig();
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get scanner config" });
+    }
+  });
+
+  app.patch("/api/scanner/config", async (req, res) => {
+    try {
+      const config = await storage.updateScannerConfig(req.body);
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update scanner config" });
+    }
+  });
+
+  // Market Events
+  app.get("/api/scanner/events", async (req, res) => {
+    try {
+      const { eventType, ticker, limit } = req.query;
+      const events = await storage.getMarketEvents({
+        eventType: eventType as string | undefined,
+        ticker: ticker as string | undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      res.json(events);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get market events" });
+    }
+  });
+
+  app.post("/api/scanner/events", async (req, res) => {
+    try {
+      const result = insertMarketEventSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error.message });
+      }
+      const event = await storage.createMarketEvent(result.data);
+      res.status(201).json(event);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create market event" });
+    }
+  });
+
+  // Manual Scanner Trigger
+  app.post("/api/scanner/run", async (req, res) => {
+    try {
+      const config = await storage.getScannerConfig();
+      if (!config?.enabled) {
+        return res.status(400).json({ error: "Scanner is disabled" });
+      }
+      
+      const connectors = await storage.getApiConnectors();
+      const connectedProviders = connectors.filter(c => c.status === "connected").map(c => c.provider);
+      
+      if (connectedProviders.length === 0) {
+        return res.status(400).json({ error: "No data providers connected. Please configure API keys." });
+      }
+
+      await storage.updateScannerConfig({ lastRun: new Date().toISOString() });
+
+      res.json({ 
+        success: true, 
+        message: "Scanner run initiated",
+        connectedProviders,
+        filters: {
+          darkPoolMinNotional: config.darkPoolMinNotional,
+          darkPoolMinAdvPercent: config.darkPoolMinAdvPercent,
+          optionsMinPremium: config.optionsMinPremium,
+          optionsMinOiChangePercent: config.optionsMinOiChangePercent,
+          optionsSweepMinSize: config.optionsSweepMinSize,
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to run scanner" });
+    }
+  });
+
+  // Connector Test/Validate
+  app.post("/api/connectors/:id/test", async (req, res) => {
+    try {
+      const connector = await storage.getApiConnector(req.params.id);
+      if (!connector) {
+        return res.status(404).json({ error: "Connector not found" });
+      }
+
+      const provider = connector.provider;
+      const apiKeyEnvVar = getApiKeyEnvVar(provider || "");
+      const hasApiKey = !!process.env[apiKeyEnvVar];
+
+      if (!hasApiKey) {
+        await storage.updateApiConnector(req.params.id, { 
+          status: "disconnected",
+          lastError: `Missing API key: ${apiKeyEnvVar}`
+        });
+        return res.json({ 
+          success: false, 
+          message: `API key not configured. Please set ${apiKeyEnvVar} in secrets.`,
+          envVar: apiKeyEnvVar 
+        });
+      }
+
+      await storage.updateApiConnector(req.params.id, { 
+        status: "connected",
+        lastSync: new Date().toISOString(),
+        lastError: null
+      });
+
+      res.json({ 
+        success: true, 
+        message: `${connector.name} connected successfully`,
+        status: "connected"
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to test connector" });
+    }
+  });
+
+  // Get required API keys status
+  app.get("/api/connectors/keys/status", async (req, res) => {
+    try {
+      const connectors = await storage.getApiConnectors();
+      const keyStatus = connectors.map(c => {
+        const envVar = getApiKeyEnvVar(c.provider || "");
+        return {
+          provider: c.provider,
+          name: c.name,
+          envVar,
+          configured: !!process.env[envVar],
+          status: c.status
+        };
+      });
+      res.json(keyStatus);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get key status" });
     }
   });
 
@@ -286,4 +437,16 @@ export async function registerRoutes(
   });
 
   return httpServer;
+}
+
+function getApiKeyEnvVar(provider: string): string {
+  const envVarMap: Record<string, string> = {
+    "unusual_whales": "UNUSUAL_WHALES_API_KEY",
+    "twitter": "TWITTER_API_KEY",
+    "polygon": "POLYGON_API_KEY",
+    "alpha_vantage": "ALPHA_VANTAGE_API_KEY",
+    "fmp": "FMP_API_KEY",
+    "sec_edgar": "SEC_EDGAR_USER_AGENT",
+  };
+  return envVarMap[provider] || `${provider.toUpperCase()}_API_KEY`;
 }

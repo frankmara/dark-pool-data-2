@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, integer, jsonb, timestamp, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -16,6 +16,66 @@ export const automationSettings = pgTable("automation_settings", {
 export const insertAutomationSettingsSchema = createInsertSchema(automationSettings).omit({ id: true });
 export type InsertAutomationSettings = z.infer<typeof insertAutomationSettingsSchema>;
 export type AutomationSettings = typeof automationSettings.$inferSelect;
+
+// Scanner Configuration Schema
+export const scannerConfig = pgTable("scanner_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 100 }).notNull(),
+  enabled: boolean("enabled").default(true),
+  refreshIntervalMs: integer("refresh_interval_ms").default(300000),
+  darkPoolMinNotional: integer("dark_pool_min_notional").default(2000000),
+  darkPoolMinAdvPercent: real("dark_pool_min_adv_percent").default(5),
+  optionsMinPremium: integer("options_min_premium").default(1000000),
+  optionsMinOiChangePercent: integer("options_min_oi_change_percent").default(500),
+  optionsSweepMinSize: integer("options_sweep_min_size").default(500000),
+  includeBlockTrades: boolean("include_block_trades").default(true),
+  includeVenueImbalance: boolean("include_venue_imbalance").default(true),
+  includeInsiderFilings: boolean("include_insider_filings").default(true),
+  includeCatalystEvents: boolean("include_catalyst_events").default(true),
+  lastRun: text("last_run"),
+  createdAt: text("created_at"),
+  updatedAt: text("updated_at"),
+});
+
+export const insertScannerConfigSchema = createInsertSchema(scannerConfig).omit({ id: true });
+export type InsertScannerConfig = z.infer<typeof insertScannerConfigSchema>;
+export type ScannerConfig = typeof scannerConfig.$inferSelect;
+
+// Normalized Market Event Schema
+export const marketEvents = pgTable("market_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  ticker: varchar("ticker", { length: 10 }).notNull(),
+  timestamp: text("timestamp").notNull(),
+  source: varchar("source", { length: 50 }).notNull(),
+  printSizeUsd: real("print_size_usd"),
+  volume: integer("volume"),
+  price: real("price"),
+  venue: varchar("venue", { length: 50 }),
+  side: varchar("side", { length: 10 }),
+  premium: real("premium"),
+  contracts: integer("contracts"),
+  strike: real("strike"),
+  expiry: text("expiry"),
+  optionType: varchar("option_type", { length: 10 }),
+  deltaExposure: real("delta_exposure"),
+  gammaExposure: real("gamma_exposure"),
+  openInterest: integer("open_interest"),
+  oiChange: integer("oi_change"),
+  oiChangePercent: real("oi_change_percent"),
+  advPercent: real("adv_percent"),
+  sentiment: varchar("sentiment", { length: 20 }),
+  flowType: varchar("flow_type", { length: 30 }),
+  isBlock: boolean("is_block").default(false),
+  isSweep: boolean("is_sweep").default(false),
+  isDarkPool: boolean("is_dark_pool").default(false),
+  signalStrength: real("signal_strength"),
+  metadata: jsonb("metadata"),
+});
+
+export const insertMarketEventSchema = createInsertSchema(marketEvents).omit({ id: true });
+export type InsertMarketEvent = z.infer<typeof insertMarketEventSchema>;
+export type MarketEvent = typeof marketEvents.$inferSelect;
 
 // Posts Schema
 export const posts = pgTable("posts", {
@@ -75,8 +135,11 @@ export const workflowNodes = pgTable("workflow_nodes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   type: varchar("type", { length: 50 }).notNull(),
   label: varchar("label", { length: 100 }).notNull(),
-  x: integer("x").notNull(),
-  y: integer("y").notNull(),
+  icon: varchar("icon", { length: 50 }),
+  color: varchar("color", { length: 30 }),
+  positionX: integer("position_x").default(0),
+  positionY: integer("position_y").default(0),
+  active: boolean("active").default(true),
   config: jsonb("config"),
 });
 
@@ -100,8 +163,12 @@ export const apiConnectors = pgTable("api_connectors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 100 }).notNull(),
   type: varchar("type", { length: 50 }).notNull(),
+  provider: varchar("provider", { length: 50 }),
   status: varchar("status", { length: 20 }).default("disconnected"),
   lastSync: text("last_sync"),
+  lastError: text("last_error"),
+  rateLimitRemaining: integer("rate_limit_remaining"),
+  rateLimitReset: text("rate_limit_reset"),
   config: jsonb("config"),
 });
 

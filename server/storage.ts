@@ -8,54 +8,55 @@ import {
   type WorkflowConnection, type InsertWorkflowConnection,
   type ApiConnector, type InsertApiConnector,
   type AnalyticsData, type InsertAnalyticsData,
+  type ScannerConfig, type InsertScannerConfig,
+  type MarketEvent, type InsertMarketEvent,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
-  // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   
-  // Automation Settings
   getAutomationSettings(): Promise<AutomationSettings | undefined>;
   updateAutomationSettings(settings: Partial<InsertAutomationSettings>): Promise<AutomationSettings>;
   
-  // Posts
   getPosts(): Promise<Post[]>;
   getPost(id: string): Promise<Post | undefined>;
   createPost(post: InsertPost): Promise<Post>;
   updatePost(id: string, post: Partial<InsertPost>): Promise<Post | undefined>;
   deletePost(id: string): Promise<boolean>;
   
-  // Dark Pool Data
   getDarkPoolData(): Promise<DarkPoolData[]>;
   createDarkPoolData(data: InsertDarkPoolData): Promise<DarkPoolData>;
   
-  // Unusual Options
   getUnusualOptions(): Promise<UnusualOptions[]>;
   createUnusualOptions(data: InsertUnusualOptions): Promise<UnusualOptions>;
   
-  // Workflow Nodes
   getWorkflowNodes(): Promise<WorkflowNode[]>;
   createWorkflowNode(node: InsertWorkflowNode): Promise<WorkflowNode>;
   updateWorkflowNode(id: string, node: Partial<InsertWorkflowNode>): Promise<WorkflowNode | undefined>;
   deleteWorkflowNode(id: string): Promise<boolean>;
   
-  // Workflow Connections
   getWorkflowConnections(): Promise<WorkflowConnection[]>;
   createWorkflowConnection(connection: InsertWorkflowConnection): Promise<WorkflowConnection>;
   deleteWorkflowConnection(id: string): Promise<boolean>;
   
-  // API Connectors
   getApiConnectors(): Promise<ApiConnector[]>;
   getApiConnector(id: string): Promise<ApiConnector | undefined>;
+  getApiConnectorByProvider(provider: string): Promise<ApiConnector | undefined>;
   createApiConnector(connector: InsertApiConnector): Promise<ApiConnector>;
   updateApiConnector(id: string, connector: Partial<InsertApiConnector>): Promise<ApiConnector | undefined>;
   
-  // Analytics Data
   getAnalyticsData(period?: string): Promise<AnalyticsData[]>;
   createAnalyticsData(data: InsertAnalyticsData): Promise<AnalyticsData>;
+
+  getScannerConfig(): Promise<ScannerConfig | undefined>;
+  updateScannerConfig(config: Partial<InsertScannerConfig>): Promise<ScannerConfig>;
+
+  getMarketEvents(filters?: { eventType?: string; ticker?: string; limit?: number }): Promise<MarketEvent[]>;
+  createMarketEvent(event: InsertMarketEvent): Promise<MarketEvent>;
+  clearMarketEvents(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -68,6 +69,8 @@ export class MemStorage implements IStorage {
   private workflowConnections: Map<string, WorkflowConnection>;
   private apiConnectors: Map<string, ApiConnector>;
   private analyticsData: Map<string, AnalyticsData>;
+  private scannerConfig: ScannerConfig | undefined;
+  private marketEvents: Map<string, MarketEvent>;
 
   constructor() {
     this.users = new Map();
@@ -78,6 +81,7 @@ export class MemStorage implements IStorage {
     this.workflowConnections = new Map();
     this.apiConnectors = new Map();
     this.analyticsData = new Map();
+    this.marketEvents = new Map();
     
     this.seedData();
   }
@@ -90,6 +94,25 @@ export class MemStorage implements IStorage {
       unusualOptionsSweeps: true,
       autoThreadPosting: false,
       analyticsTracking: true,
+    };
+
+    this.scannerConfig = {
+      id: randomUUID(),
+      name: "Master Dark Pool & Unusual Options Scanner",
+      enabled: true,
+      refreshIntervalMs: 300000,
+      darkPoolMinNotional: 2000000,
+      darkPoolMinAdvPercent: 5,
+      optionsMinPremium: 1000000,
+      optionsMinOiChangePercent: 500,
+      optionsSweepMinSize: 500000,
+      includeBlockTrades: true,
+      includeVenueImbalance: true,
+      includeInsiderFilings: true,
+      includeCatalystEvents: true,
+      lastRun: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     const darkPoolItems: InsertDarkPoolData[] = [
@@ -118,16 +141,17 @@ export class MemStorage implements IStorage {
     });
 
     const connectors: InsertApiConnector[] = [
-      { name: "Twitter/X API", type: "social", status: "connected", lastSync: new Date().toISOString(), config: {} },
-      { name: "Dark Pool Feed", type: "market-data", status: "connected", lastSync: new Date().toISOString(), config: {} },
-      { name: "Options Flow API", type: "market-data", status: "connected", lastSync: new Date().toISOString(), config: {} },
-      { name: "Finviz Scraper", type: "market-data", status: "disconnected", lastSync: null, config: {} },
-      { name: "TradingView Webhook", type: "alerts", status: "pending", lastSync: null, config: {} },
+      { name: "Unusual Whales API", type: "market-data", provider: "unusual_whales", status: "disconnected", lastSync: null, config: { scope: "full_access" } },
+      { name: "X/Twitter API v2", type: "social", provider: "twitter", status: "disconnected", lastSync: null, config: { scope: "read_write_analytics" } },
+      { name: "Polygon.io", type: "market-data", provider: "polygon", status: "disconnected", lastSync: null, config: { scope: "stocks_options" } },
+      { name: "Alpha Vantage", type: "market-data", provider: "alpha_vantage", status: "disconnected", lastSync: null, config: { scope: "fundamentals" } },
+      { name: "Financial Modeling Prep", type: "market-data", provider: "fmp", status: "disconnected", lastSync: null, config: { scope: "all" } },
+      { name: "SEC EDGAR", type: "filings", provider: "sec_edgar", status: "connected", lastSync: new Date().toISOString(), config: { scope: "insider_filings" } },
     ];
 
     connectors.forEach(connector => {
       const id = randomUUID();
-      this.apiConnectors.set(id, { id, ...connector });
+      this.apiConnectors.set(id, { id, ...connector, lastError: null, rateLimitRemaining: null, rateLimitReset: null });
     });
 
     const posts: InsertPost[] = [
@@ -142,13 +166,14 @@ export class MemStorage implements IStorage {
     });
 
     const workflowNodes: InsertWorkflowNode[] = [
-      { label: "Dark Pool Scanner", type: "trigger", icon: "ScanSearch", color: "primary", positionX: 100, positionY: 150, active: true },
-      { label: "Options Flow", type: "trigger", icon: "TrendingUp", color: "warning", positionX: 100, positionY: 280, active: true },
-      { label: "Volume Filter", type: "filter", icon: "Filter", color: "muted", positionX: 350, positionY: 180, active: true },
-      { label: "Sentiment Check", type: "filter", icon: "Database", color: "muted", positionX: 350, positionY: 310, active: true },
-      { label: "Generate Post", type: "action", icon: "MessageSquare", color: "positive", positionX: 600, positionY: 220, active: true },
-      { label: "Schedule", type: "action", icon: "Clock", color: "secondary", positionX: 850, positionY: 180, active: true },
-      { label: "Send Alert", type: "action", icon: "Bell", color: "negative", positionX: 850, positionY: 290, active: false },
+      { label: "Master Scanner", type: "trigger", icon: "Radar", color: "primary", positionX: 100, positionY: 200, active: true, config: { nodeType: "master_scanner" } },
+      { label: "Dark Pool Scanner", type: "trigger", icon: "ScanSearch", color: "primary", positionX: 350, positionY: 120, active: true },
+      { label: "Options Flow", type: "trigger", icon: "TrendingUp", color: "warning", positionX: 350, positionY: 280, active: true },
+      { label: "Volume Filter", type: "filter", icon: "Filter", color: "muted", positionX: 600, positionY: 150, active: true },
+      { label: "Sentiment Check", type: "filter", icon: "Database", color: "muted", positionX: 600, positionY: 280, active: true },
+      { label: "Generate Post", type: "action", icon: "MessageSquare", color: "positive", positionX: 850, positionY: 200, active: true },
+      { label: "Post to X", type: "action", icon: "Twitter", color: "primary", positionX: 1100, positionY: 150, active: true },
+      { label: "Send Alert", type: "action", icon: "Bell", color: "negative", positionX: 1100, positionY: 280, active: false },
     ];
 
     workflowNodes.forEach((node, index) => {
@@ -300,9 +325,13 @@ export class MemStorage implements IStorage {
     return this.apiConnectors.get(id);
   }
 
+  async getApiConnectorByProvider(provider: string): Promise<ApiConnector | undefined> {
+    return Array.from(this.apiConnectors.values()).find(c => c.provider === provider);
+  }
+
   async createApiConnector(connector: InsertApiConnector): Promise<ApiConnector> {
     const id = randomUUID();
-    const newConnector: ApiConnector = { id, ...connector };
+    const newConnector: ApiConnector = { id, ...connector, lastError: null, rateLimitRemaining: null, rateLimitReset: null };
     this.apiConnectors.set(id, newConnector);
     return newConnector;
   }
@@ -328,6 +357,65 @@ export class MemStorage implements IStorage {
     const newData: AnalyticsData = { id, ...data };
     this.analyticsData.set(id, newData);
     return newData;
+  }
+
+  async getScannerConfig(): Promise<ScannerConfig | undefined> {
+    return this.scannerConfig;
+  }
+
+  async updateScannerConfig(config: Partial<InsertScannerConfig>): Promise<ScannerConfig> {
+    if (!this.scannerConfig) {
+      this.scannerConfig = {
+        id: randomUUID(),
+        name: "Master Scanner",
+        enabled: true,
+        refreshIntervalMs: 300000,
+        darkPoolMinNotional: 2000000,
+        darkPoolMinAdvPercent: 5,
+        optionsMinPremium: 1000000,
+        optionsMinOiChangePercent: 500,
+        optionsSweepMinSize: 500000,
+        includeBlockTrades: true,
+        includeVenueImbalance: true,
+        includeInsiderFilings: true,
+        includeCatalystEvents: true,
+        lastRun: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    this.scannerConfig = { ...this.scannerConfig, ...config, updatedAt: new Date().toISOString() };
+    return this.scannerConfig;
+  }
+
+  async getMarketEvents(filters?: { eventType?: string; ticker?: string; limit?: number }): Promise<MarketEvent[]> {
+    let events = Array.from(this.marketEvents.values());
+    
+    if (filters?.eventType) {
+      events = events.filter(e => e.eventType === filters.eventType);
+    }
+    if (filters?.ticker) {
+      events = events.filter(e => e.ticker === filters.ticker);
+    }
+    
+    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
+    if (filters?.limit) {
+      events = events.slice(0, filters.limit);
+    }
+    
+    return events;
+  }
+
+  async createMarketEvent(event: InsertMarketEvent): Promise<MarketEvent> {
+    const id = randomUUID();
+    const newEvent: MarketEvent = { id, ...event };
+    this.marketEvents.set(id, newEvent);
+    return newEvent;
+  }
+
+  async clearMarketEvents(): Promise<void> {
+    this.marketEvents.clear();
   }
 }
 
