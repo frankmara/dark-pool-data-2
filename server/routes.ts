@@ -713,7 +713,179 @@ export async function registerRoutes(
     }
   });
 
+  // Test Mode Routes
+  app.get("/api/test-mode/settings", async (req, res) => {
+    try {
+      let settings = await storage.getTestModeSettings();
+      if (!settings) {
+        settings = await storage.updateTestModeSettings({
+          enabled: false,
+          intervalMinutes: 30,
+          autoGenerate: false
+        });
+      }
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get test mode settings" });
+    }
+  });
+
+  app.patch("/api/test-mode/settings", async (req, res) => {
+    try {
+      const settings = await storage.updateTestModeSettings(req.body);
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update test mode settings" });
+    }
+  });
+
+  app.get("/api/test-mode/posts", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const posts = await storage.getTestPosts(limit);
+      res.json(posts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get test posts" });
+    }
+  });
+
+  app.post("/api/test-mode/generate", async (req, res) => {
+    try {
+      const darkPoolData = await storage.getDarkPoolData();
+      const optionsData = await storage.getUnusualOptions();
+      
+      const allData = [
+        ...darkPoolData.map(d => ({ type: 'dark_pool', data: d })),
+        ...optionsData.map(o => ({ type: 'options', data: o }))
+      ];
+      
+      if (allData.length === 0) {
+        return res.status(400).json({ error: "No data available to generate posts" });
+      }
+      
+      const randomItem = allData[Math.floor(Math.random() * allData.length)];
+      const post = await generateTestPost(randomItem);
+      const created = await storage.createTestPost(post);
+      
+      await storage.updateTestModeSettings({ lastGenerated: new Date().toISOString() });
+      
+      res.status(201).json(created);
+    } catch (error) {
+      console.error("Failed to generate test post:", error);
+      res.status(500).json({ error: "Failed to generate test post" });
+    }
+  });
+
+  app.delete("/api/test-mode/posts", async (req, res) => {
+    try {
+      await storage.clearTestPosts();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to clear test posts" });
+    }
+  });
+
   return httpServer;
+}
+
+function generateTestPost(item: { type: string; data: any }): any {
+  const isOptions = item.type === 'options';
+  const data = item.data;
+  
+  const ticker = data.ticker;
+  const sentiment = isOptions 
+    ? (data.type === 'CALL' ? 'bullish' : 'bearish')
+    : (data.sentiment?.toLowerCase() || 'neutral');
+  
+  const convictions = ['high', 'medium', 'low'];
+  const conviction = convictions[Math.floor(Math.random() * convictions.length)];
+  
+  const variants = ['neutral', 'bullish', 'bearish'];
+  const variant = sentiment === 'bullish' ? 'bullish' : sentiment === 'bearish' ? 'bearish' : variants[Math.floor(Math.random() * variants.length)];
+  
+  const now = new Date();
+  const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  
+  let thread: any[];
+  
+  if (isOptions) {
+    const premium = data.premium;
+    const strike = data.strike;
+    const expiry = data.expiry;
+    const optionType = data.type;
+    const volume = data.volume?.toLocaleString() || '0';
+    const oi = data.openInterest?.toLocaleString() || '0';
+    
+    thread = [
+      {
+        index: 1,
+        content: `Notable ${optionType} sweep detected on $${ticker}. ${premium} premium at ${strike} strike, ${expiry} expiry. Volume ${volume} vs OI ${oi}. Delta-positive flow building.`,
+        type: 'hook'
+      },
+      {
+        index: 2,
+        content: `Context: $${ticker} showing aggressive ${optionType === 'CALL' ? 'bullish' : 'bearish'} positioning. Premium concentration at ${strike} suggests institutional accumulation. Vol/OI ratio indicates fresh positioning.`,
+        type: 'context'
+      },
+      {
+        index: 3,
+        content: `Technical setup: Price testing key levels. Gamma exposure concentrated near ${strike}. Vanna/charm pressure ${optionType === 'CALL' ? 'supportive' : 'resistive'} into expiry. Order flow confirms directional bias.`,
+        type: 'technicals'
+      },
+      {
+        index: 4,
+        content: `Scenarios: 60% probability of move toward ${strike} by expiry. 30% consolidation near current levels. 10% reversal risk. Overall conviction: ${conviction.charAt(0).toUpperCase() + conviction.slice(1)}.`,
+        type: 'scenarios'
+      }
+    ];
+  } else {
+    const volume = (data.volume / 1000000).toFixed(1);
+    const price = data.price;
+    const flowType = data.flowType || 'Activity';
+    
+    thread = [
+      {
+        index: 1,
+        content: `Dark pool print: $${ticker} - ${volume}M shares at $${price}. ${flowType} signal detected. Print represents notable % of ADV. Directional tone: ${sentiment}.`,
+        type: 'hook'
+      },
+      {
+        index: 2,
+        content: `Context: $${ticker} institutional flow analysis. ${flowType === 'Accumulation' ? 'Notable accumulation' : 'Aggressive distribution'} pattern emerging. Block characteristics suggest smart money positioning.`,
+        type: 'context'
+      },
+      {
+        index: 3,
+        content: `Technical setup: Dark pool print aligns with volume profile POC. Key support/resistance levels being tested. EMA stack ${sentiment === 'bullish' ? 'supportive' : 'resistive'}. VWAP deviation notable.`,
+        type: 'technicals'
+      },
+      {
+        index: 4,
+        content: `Scenarios: Primary thesis ${sentiment === 'bullish' ? 'continuation higher' : 'further distribution'} (50%). Secondary: range consolidation (35%). Tail risk: reversal (15%). Conviction: ${conviction.charAt(0).toUpperCase() + conviction.slice(1)}.`,
+        type: 'scenarios'
+      }
+    ];
+  }
+  
+  const engagement = {
+    impressions: Math.floor(Math.random() * 50000) + 5000,
+    likes: Math.floor(Math.random() * 500) + 50,
+    retweets: Math.floor(Math.random() * 100) + 10,
+    replies: Math.floor(Math.random() * 50) + 5,
+    bookmarks: Math.floor(Math.random() * 200) + 20,
+  };
+  
+  return {
+    ticker,
+    eventType: isOptions ? 'options_sweep' : 'dark_pool',
+    thread,
+    variant,
+    conviction,
+    sourceEvent: data,
+    generatedAt: now.toISOString(),
+    sentiment,
+    engagement
+  };
 }
 
 function getApiKeyEnvVar(provider: string): string {
