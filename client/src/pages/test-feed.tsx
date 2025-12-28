@@ -70,6 +70,9 @@ interface TweetCardProps {
 function TweetCard({ post }: TweetCardProps) {
   const thread = post.thread as any[];
   const engagement = post.engagement as any;
+  const chartSvg = (post as any).chartSvg as string | undefined;
+  const flowSummarySvg = (post as any).flowSummarySvg as string | undefined;
+  const isLiveData = (post as any).isLiveData as boolean | undefined;
   
   const getSentimentIcon = () => {
     switch (post.sentiment) {
@@ -110,6 +113,11 @@ function TweetCard({ post }: TweetCardProps) {
                 <span className="text-muted-foreground text-sm">{formatTimeAgo(post.generatedAt)}</span>
                 {idx === 0 && (
                   <>
+                    {isLiveData && (
+                      <Badge variant="secondary" className="text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                        LIVE
+                      </Badge>
+                    )}
                     <Badge variant="outline" className={`text-xs ml-auto ${getConvictionColor()}`}>
                       {post.conviction?.toUpperCase()}
                     </Badge>
@@ -132,6 +140,22 @@ function TweetCard({ post }: TweetCardProps) {
               <p className="text-sm leading-relaxed mt-1 whitespace-pre-wrap">
                 {tweet.content}
               </p>
+              
+              {idx === 0 && chartSvg && (
+                <div 
+                  className="mt-3 rounded-lg border border-border overflow-hidden"
+                  dangerouslySetInnerHTML={{ __html: chartSvg }}
+                  data-testid="chart-image"
+                />
+              )}
+              
+              {idx === 1 && flowSummarySvg && (
+                <div 
+                  className="mt-3 rounded-lg border border-border overflow-hidden"
+                  dangerouslySetInnerHTML={{ __html: flowSummarySvg }}
+                  data-testid="flow-summary-image"
+                />
+              )}
               
               {idx === 0 && (
                 <div className="flex items-center gap-6 mt-3 text-muted-foreground">

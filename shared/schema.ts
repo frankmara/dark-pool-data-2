@@ -275,6 +275,9 @@ export const testPosts = pgTable("test_posts", {
   generatedAt: text("generated_at").notNull(),
   sentiment: varchar("sentiment", { length: 20 }),
   engagement: jsonb("engagement"), // Simulated engagement data
+  chartSvg: text("chart_svg"), // TradingView-style chart SVG
+  flowSummarySvg: text("flow_summary_svg"), // Flow summary card SVG
+  isLiveData: boolean("is_live_data").default(false), // Whether this used live API data
 });
 
 export const insertTestPostSchema = createInsertSchema(testPosts).omit({ id: true });

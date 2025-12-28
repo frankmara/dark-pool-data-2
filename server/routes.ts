@@ -17,6 +17,17 @@ import {
   insertHealthSnapshotSchema
 } from "@shared/schema";
 import { z } from "zod";
+import { 
+  fetchUnusualWhalesData, 
+  getEnrichedTickerData,
+  generateMockDarkPoolPrint,
+  generateMockOptionsSweep 
+} from "./live-data-service";
+import { 
+  generateChartSvg, 
+  generateFlowSummarySvg,
+  generateMockCandles 
+} from "./chart-generator";
 
 const scannerConfigUpdateSchema = z.object({
   name: z.string().optional(),
@@ -751,20 +762,31 @@ export async function registerRoutes(
 
   app.post("/api/test-mode/generate", async (req, res) => {
     try {
-      const darkPoolData = await storage.getDarkPoolData();
-      const optionsData = await storage.getUnusualOptions();
+      let dataItem: { type: string; data: any; isLive: boolean };
+      let isLiveData = false;
+
+      // Try to fetch live data from Unusual Whales first
+      const liveData = await fetchUnusualWhalesData();
       
-      const allData = [
-        ...darkPoolData.map(d => ({ type: 'dark_pool', data: d })),
-        ...optionsData.map(o => ({ type: 'options', data: o }))
-      ];
-      
-      if (allData.length === 0) {
-        return res.status(400).json({ error: "No data available to generate posts" });
+      if (liveData.darkPool.length > 0 || liveData.options.length > 0) {
+        isLiveData = true;
+        const allLive = [
+          ...liveData.darkPool.map(d => ({ type: 'dark_pool', data: d })),
+          ...liveData.options.map(o => ({ type: 'options', data: o }))
+        ];
+        const selected = allLive[Math.floor(Math.random() * allLive.length)];
+        dataItem = { ...selected, isLive: true };
+      } else {
+        // Fall back to mock data generation
+        const useDarkPool = Math.random() > 0.5;
+        if (useDarkPool) {
+          dataItem = { type: 'dark_pool', data: generateMockDarkPoolPrint(), isLive: false };
+        } else {
+          dataItem = { type: 'options', data: generateMockOptionsSweep(), isLive: false };
+        }
       }
       
-      const randomItem = allData[Math.floor(Math.random() * allData.length)];
-      const post = await generateTestPost(randomItem);
+      const post = await generateTestPost(dataItem, isLiveData);
       const created = await storage.createTestPost(post);
       
       await storage.updateTestModeSettings({ lastGenerated: new Date().toISOString() });
@@ -788,7 +810,7 @@ export async function registerRoutes(
   return httpServer;
 }
 
-function generateTestPost(item: { type: string; data: any }): any {
+async function generateTestPost(item: { type: string; data: any }, isLiveData: boolean = false): Promise<any> {
   const isOptions = item.type === 'options';
   const data = item.data;
   
@@ -874,6 +896,44 @@ function generateTestPost(item: { type: string; data: any }): any {
     replies: Math.floor(Math.random() * 50) + 5,
     bookmarks: Math.floor(Math.random() * 200) + 20,
   };
+
+  // Generate chart SVG
+  const basePrice = isOptions ? (data.strike || 150) : (data.price || 150);
+  const candles = generateMockCandles(basePrice, 50);
+  const chartSvg = generateChartSvg({
+    ticker,
+    timeframe: '15m',
+    candles,
+    darkPoolPrint: isOptions ? undefined : {
+      time: candles[candles.length - 5]?.time || Date.now(),
+      price: data.price || basePrice,
+      size: data.value || data.volume || 1000000
+    },
+    levels: {
+      vwap: basePrice * 0.998,
+      ema20: basePrice * 1.002,
+      ema50: basePrice * 0.995,
+    }
+  });
+
+  // Generate flow summary card SVG
+  const flowSummarySvg = generateFlowSummarySvg({
+    ticker,
+    timestamp: now.toISOString(),
+    eventType: isOptions ? 'options_sweep' : 'dark_pool',
+    size: isOptions ? (data.contracts || 1000) : (data.size || data.volume || 50000),
+    sizeUsd: isOptions ? (data.premium || 500000) : (data.value || data.volume * (data.price || 100)),
+    price: isOptions ? undefined : data.price,
+    strike: isOptions ? data.strike : undefined,
+    expiry: isOptions ? data.expiry : undefined,
+    optionType: isOptions ? (data.type?.toLowerCase() as 'call' | 'put') : undefined,
+    premium: isOptions ? data.premium : undefined,
+    delta: isOptions ? data.delta : undefined,
+    breakeven: isOptions ? (data.strike + (data.premium || 0) / 100) : undefined,
+    sentiment,
+    conviction: conviction as 'high' | 'medium' | 'low',
+    venue: isOptions ? undefined : (data.venue || 'DARK')
+  });
   
   return {
     ticker,
@@ -884,7 +944,10 @@ function generateTestPost(item: { type: string; data: any }): any {
     sourceEvent: data,
     generatedAt: now.toISOString(),
     sentiment,
-    engagement
+    engagement,
+    chartSvg,
+    flowSummarySvg,
+    isLiveData
   };
 }
 
