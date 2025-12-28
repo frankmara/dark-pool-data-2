@@ -465,7 +465,7 @@ export default function TestFeed() {
         </div>
       </div>
       
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 print-content">
         {postsLoading ? (
           <div className="p-4 space-y-4">
             {[1, 2, 3].map(i => (
