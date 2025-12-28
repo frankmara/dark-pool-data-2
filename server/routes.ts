@@ -10,7 +10,11 @@ import {
   insertWorkflowConnectionSchema, 
   insertAnalyticsDataSchema,
   insertScannerConfigSchema,
-  insertMarketEventSchema
+  insertMarketEventSchema,
+  insertSystemLogSchema,
+  insertNotificationChannelSchema,
+  insertAlertRuleSchema,
+  insertHealthSnapshotSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -581,6 +585,131 @@ export async function registerRoutes(
       res.status(201).json(data);
     } catch (error) {
       res.status(500).json({ error: "Failed to create analytics data" });
+    }
+  });
+
+  // System Logs
+  app.get("/api/logs", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const logs = await storage.getSystemLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get system logs" });
+    }
+  });
+
+  app.post("/api/logs", async (req, res) => {
+    try {
+      const result = insertSystemLogSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error.message });
+      }
+      const log = await storage.createSystemLog(result.data);
+      res.status(201).json(log);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create system log" });
+    }
+  });
+
+  // Notification Channels
+  app.get("/api/notifications/channels", async (req, res) => {
+    try {
+      const channels = await storage.getNotificationChannels();
+      res.json(channels);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get notification channels" });
+    }
+  });
+
+  app.post("/api/notifications/channels", async (req, res) => {
+    try {
+      const result = insertNotificationChannelSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error.message });
+      }
+      const channel = await storage.createNotificationChannel(result.data);
+      res.status(201).json(channel);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create notification channel" });
+    }
+  });
+
+  app.patch("/api/notifications/channels/:id", async (req, res) => {
+    try {
+      const channel = await storage.updateNotificationChannel(req.params.id, req.body);
+      if (!channel) {
+        return res.status(404).json({ error: "Channel not found" });
+      }
+      res.json(channel);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update notification channel" });
+    }
+  });
+
+  app.delete("/api/notifications/channels/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteNotificationChannel(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Channel not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete notification channel" });
+    }
+  });
+
+  // Alert Rules
+  app.get("/api/notifications/alerts", async (req, res) => {
+    try {
+      const rules = await storage.getAlertRules();
+      res.json(rules);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get alert rules" });
+    }
+  });
+
+  app.post("/api/notifications/alerts", async (req, res) => {
+    try {
+      const result = insertAlertRuleSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error.message });
+      }
+      const rule = await storage.createAlertRule(result.data);
+      res.status(201).json(rule);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create alert rule" });
+    }
+  });
+
+  app.patch("/api/notifications/alerts/:id", async (req, res) => {
+    try {
+      const rule = await storage.updateAlertRule(req.params.id, req.body);
+      if (!rule) {
+        return res.status(404).json({ error: "Alert rule not found" });
+      }
+      res.json(rule);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update alert rule" });
+    }
+  });
+
+  // Health Snapshots
+  app.get("/api/health", async (req, res) => {
+    try {
+      const snapshots = await storage.getHealthSnapshots();
+      res.json(snapshots);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get health snapshots" });
+    }
+  });
+
+  app.post("/api/health/:component", async (req, res) => {
+    try {
+      const snapshot = await storage.updateHealthSnapshot(req.params.component, req.body);
+      res.json(snapshot);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update health snapshot" });
     }
   });
 

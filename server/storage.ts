@@ -10,6 +10,10 @@ import {
   type AnalyticsData, type InsertAnalyticsData,
   type ScannerConfig, type InsertScannerConfig,
   type MarketEvent, type InsertMarketEvent,
+  type SystemLog, type InsertSystemLog,
+  type NotificationChannel, type InsertNotificationChannel,
+  type AlertRule, type InsertAlertRule,
+  type HealthSnapshot, type InsertHealthSnapshot,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -57,6 +61,21 @@ export interface IStorage {
   getMarketEvents(filters?: { eventType?: string; ticker?: string; limit?: number }): Promise<MarketEvent[]>;
   createMarketEvent(event: InsertMarketEvent): Promise<MarketEvent>;
   clearMarketEvents(): Promise<void>;
+
+  getSystemLogs(limit?: number): Promise<SystemLog[]>;
+  createSystemLog(log: InsertSystemLog): Promise<SystemLog>;
+
+  getNotificationChannels(): Promise<NotificationChannel[]>;
+  createNotificationChannel(channel: InsertNotificationChannel): Promise<NotificationChannel>;
+  updateNotificationChannel(id: string, channel: Partial<InsertNotificationChannel>): Promise<NotificationChannel | undefined>;
+  deleteNotificationChannel(id: string): Promise<boolean>;
+
+  getAlertRules(): Promise<AlertRule[]>;
+  createAlertRule(rule: InsertAlertRule): Promise<AlertRule>;
+  updateAlertRule(id: string, rule: Partial<InsertAlertRule>): Promise<AlertRule | undefined>;
+
+  getHealthSnapshots(): Promise<HealthSnapshot[]>;
+  updateHealthSnapshot(component: string, snapshot: Partial<InsertHealthSnapshot>): Promise<HealthSnapshot>;
 }
 
 export class MemStorage implements IStorage {
@@ -71,6 +90,10 @@ export class MemStorage implements IStorage {
   private analyticsData: Map<string, AnalyticsData>;
   private scannerConfig: ScannerConfig | undefined;
   private marketEvents: Map<string, MarketEvent>;
+  private systemLogs: Map<string, SystemLog>;
+  private notificationChannels: Map<string, NotificationChannel>;
+  private alertRules: Map<string, AlertRule>;
+  private healthSnapshots: Map<string, HealthSnapshot>;
 
   constructor() {
     this.users = new Map();
@@ -82,6 +105,10 @@ export class MemStorage implements IStorage {
     this.apiConnectors = new Map();
     this.analyticsData = new Map();
     this.marketEvents = new Map();
+    this.systemLogs = new Map();
+    this.notificationChannels = new Map();
+    this.alertRules = new Map();
+    this.healthSnapshots = new Map();
     
     this.seedData();
   }
@@ -314,11 +341,83 @@ export class MemStorage implements IStorage {
       },
       { label: "Post to X", type: "action", icon: "Twitter", color: "primary", positionX: 1100, positionY: 150, active: true },
       { label: "Send Alert", type: "action", icon: "Bell", color: "negative", positionX: 1100, positionY: 280, active: false },
+      {
+        label: "Global Error Handler",
+        type: "utility",
+        icon: "ShieldAlert",
+        color: "negative",
+        positionX: 100,
+        positionY: 400,
+        active: true,
+        config: {
+          nodeType: "error_handler",
+          monitoredApis: ["unusual_whales", "twitter", "polygon", "alpha_vantage", "fmp", "sec_edgar"],
+          retryPolicy: { maxRetries: 3, backoffMs: 5000 },
+          errorTypes: ["rate_limit", "auth_failure", "network_error", "timeout"],
+          notifyOnError: true,
+          logLevel: "error"
+        }
+      },
+      {
+        label: "Fallback Logic",
+        type: "utility",
+        icon: "GitBranch",
+        color: "warning",
+        positionX: 350,
+        positionY: 400,
+        active: true,
+        config: {
+          nodeType: "fallback",
+          fallbacks: {
+            unusual_whales: { primary: "unusual_whales", fallback: ["polygon", "alpha_vantage"], mode: "price_volume_only" },
+            image_gen: { onFail: "text_only_thread", notify: true }
+          },
+          textOnlyMode: { enabled: true, trigger: "image_gen_failure" }
+        }
+      }
     ];
 
     workflowNodes.forEach((node, index) => {
       const id = (index + 1).toString();
       this.workflowNodes.set(id, { id, ...node });
+    });
+
+    const healthComponents = ["scanner", "llm_agent", "chart_gen", "poster"];
+    healthComponents.forEach((component) => {
+      const id = randomUUID();
+      this.healthSnapshots.set(component, {
+        id,
+        component,
+        status: "green",
+        lastCheck: new Date().toISOString(),
+        message: "All systems operational",
+        metrics: { uptime: 99.9, latency: 120, errors24h: 0 }
+      });
+    });
+
+    const defaultAlerts: InsertAlertRule[] = [
+      { name: "High-Conviction Missed", alertType: "missed_post", enabled: true, threshold: 0.8, channelIds: null, config: { conviction: "high" } },
+      { name: "Follower Drop", alertType: "follower_drop", enabled: true, threshold: 5, channelIds: null, config: { period: "24h" } },
+      { name: "Low Engagement", alertType: "engagement_velocity", enabled: true, threshold: 2.5, channelIds: null, config: { metric: "engagement_rate" } },
+      { name: "API Key Expiring", alertType: "api_key_expiry", enabled: true, threshold: 7, channelIds: null, config: { daysWarning: 7 } }
+    ];
+
+    defaultAlerts.forEach((alert) => {
+      const id = randomUUID();
+      this.alertRules.set(id, { id, ...alert });
+    });
+
+    const sampleLogs: InsertSystemLog[] = [
+      { timestamp: new Date().toISOString(), component: "scanner", eventType: "scan_complete", status: "success", message: "Scanned 45 dark pool prints", metadata: { duration: 2340 } },
+      { timestamp: new Date(Date.now() - 300000).toISOString(), component: "poster", eventType: "post_published", status: "success", message: "Thread posted to X", metadata: { postId: "12345" } },
+      { timestamp: new Date(Date.now() - 600000).toISOString(), component: "llm_agent", eventType: "thread_generated", status: "success", message: "Generated NVDA thread", metadata: { ticker: "NVDA" } },
+      { timestamp: new Date(Date.now() - 900000).toISOString(), component: "chart_gen", eventType: "image_generated", status: "success", message: "Chart and flow card ready", metadata: {} },
+      { timestamp: new Date(Date.now() - 1200000).toISOString(), component: "scanner", eventType: "api_call", status: "warning", message: "Rate limit approaching", metadata: { remaining: 50 } }
+    ];
+
+    sampleLogs.forEach((log) => {
+      const id = randomUUID();
+      this.systemLogs.set(id, { id, ...log });
     });
   }
 
@@ -556,6 +655,90 @@ export class MemStorage implements IStorage {
 
   async clearMarketEvents(): Promise<void> {
     this.marketEvents.clear();
+  }
+
+  async getSystemLogs(limit: number = 100): Promise<SystemLog[]> {
+    const logs = Array.from(this.systemLogs.values());
+    logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return logs.slice(0, limit);
+  }
+
+  async createSystemLog(log: InsertSystemLog): Promise<SystemLog> {
+    const id = randomUUID();
+    const newLog: SystemLog = { id, ...log };
+    this.systemLogs.set(id, newLog);
+    if (this.systemLogs.size > 500) {
+      const logs = Array.from(this.systemLogs.entries())
+        .sort((a, b) => new Date(b[1].timestamp).getTime() - new Date(a[1].timestamp).getTime());
+      this.systemLogs = new Map(logs.slice(0, 500));
+    }
+    return newLog;
+  }
+
+  async getNotificationChannels(): Promise<NotificationChannel[]> {
+    return Array.from(this.notificationChannels.values());
+  }
+
+  async createNotificationChannel(channel: InsertNotificationChannel): Promise<NotificationChannel> {
+    const id = randomUUID();
+    const newChannel: NotificationChannel = { id, ...channel };
+    this.notificationChannels.set(id, newChannel);
+    return newChannel;
+  }
+
+  async updateNotificationChannel(id: string, channel: Partial<InsertNotificationChannel>): Promise<NotificationChannel | undefined> {
+    const existing = this.notificationChannels.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...channel };
+    this.notificationChannels.set(id, updated);
+    return updated;
+  }
+
+  async deleteNotificationChannel(id: string): Promise<boolean> {
+    return this.notificationChannels.delete(id);
+  }
+
+  async getAlertRules(): Promise<AlertRule[]> {
+    return Array.from(this.alertRules.values());
+  }
+
+  async createAlertRule(rule: InsertAlertRule): Promise<AlertRule> {
+    const id = randomUUID();
+    const newRule: AlertRule = { id, ...rule };
+    this.alertRules.set(id, newRule);
+    return newRule;
+  }
+
+  async updateAlertRule(id: string, rule: Partial<InsertAlertRule>): Promise<AlertRule | undefined> {
+    const existing = this.alertRules.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...rule };
+    this.alertRules.set(id, updated);
+    return updated;
+  }
+
+  async getHealthSnapshots(): Promise<HealthSnapshot[]> {
+    return Array.from(this.healthSnapshots.values());
+  }
+
+  async updateHealthSnapshot(component: string, snapshot: Partial<InsertHealthSnapshot>): Promise<HealthSnapshot> {
+    const existing = this.healthSnapshots.get(component);
+    if (existing) {
+      const updated = { ...existing, ...snapshot, lastCheck: new Date().toISOString() };
+      this.healthSnapshots.set(component, updated);
+      return updated;
+    }
+    const id = randomUUID();
+    const newSnapshot: HealthSnapshot = {
+      id,
+      component,
+      status: snapshot.status || "green",
+      lastCheck: new Date().toISOString(),
+      message: snapshot.message || null,
+      metrics: snapshot.metrics || null
+    };
+    this.healthSnapshots.set(component, newSnapshot);
+    return newSnapshot;
   }
 }
 

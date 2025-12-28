@@ -19,7 +19,8 @@ import {
   GitBranch,
   Settings,
   HelpCircle,
-  Zap
+  Zap,
+  FileText
 } from "lucide-react";
 
 const navigationItems = [
@@ -52,6 +53,12 @@ const navigationItems = [
     url: "/workflow",
     icon: GitBranch,
     description: "Visual automation builder"
+  },
+  {
+    title: "Operations Center",
+    url: "/ops-center",
+    icon: FileText,
+    description: "System logs & monitoring"
   },
 ];
 

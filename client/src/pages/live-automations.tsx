@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MetricCard } from "@/components/metric-card";
 import { DataTable, SentimentBadge, FlowIndicator, TickerCell } from "@/components/data-table";
 import { StatusIndicator, StatusDot } from "@/components/status-indicator";
-import type { DarkPoolData, UnusualOptions, Post } from "@shared/schema";
+import type { DarkPoolData, UnusualOptions, Post, HealthSnapshot } from "@shared/schema";
 import { 
   ScanSearch, 
   TrendingUp, 
@@ -16,7 +16,11 @@ import {
   ExternalLink,
   Activity,
   Zap,
-  Eye
+  Eye,
+  ShieldCheck,
+  Brain,
+  ImageIcon,
+  Send
 } from "lucide-react";
 
 interface AutomationToggles {
@@ -107,7 +111,41 @@ export default function LiveAutomations({ toggles }: LiveAutomationsProps) {
     refetchInterval: 10000,
   });
 
+  const { data: healthSnapshots = [], isLoading: healthLoading } = useQuery<HealthSnapshot[]>({
+    queryKey: ['/api/health'],
+    refetchInterval: 30000,
+  });
+
   const recentPosts = posts.slice(0, 3);
+
+  const getHealthIcon = (component: string) => {
+    switch (component) {
+      case 'scanner': return ScanSearch;
+      case 'llm_agent': return Brain;
+      case 'chart_gen': return ImageIcon;
+      case 'poster': return Send;
+      default: return Activity;
+    }
+  };
+
+  const getHealthLabel = (component: string) => {
+    switch (component) {
+      case 'scanner': return 'Scanner';
+      case 'llm_agent': return 'LLM Agent';
+      case 'chart_gen': return 'Chart Gen';
+      case 'poster': return 'Poster';
+      default: return component;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'green': return 'bg-positive';
+      case 'yellow': return 'bg-warning';
+      case 'red': return 'bg-negative';
+      default: return 'bg-muted-foreground';
+    }
+  };
 
   return (
     <div className="p-6 space-y-6 overflow-auto h-full" data-testid="page-live-automations">
@@ -355,6 +393,78 @@ export default function LiveAutomations({ toggles }: LiveAutomationsProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Card data-testid="card-health-status">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-md bg-positive/10 flex items-center justify-center">
+              <ShieldCheck className="w-4 h-4 text-positive" />
+            </div>
+            <div>
+              <CardTitle className="text-base">System Health</CardTitle>
+              <p className="text-xs text-muted-foreground">Component status monitoring</p>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-xs" data-testid="badge-health-refresh">
+            <Clock className="w-3 h-3 mr-1" />
+            Auto-refresh 30s
+          </Badge>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {healthLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 w-full" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {healthSnapshots.map((snapshot) => {
+                const Icon = getHealthIcon(snapshot.component);
+                const metrics = snapshot.metrics as { uptime?: number; latency?: number; errors24h?: number } | null;
+                return (
+                  <div 
+                    key={snapshot.id} 
+                    className="p-4 rounded-md bg-muted/50 space-y-3"
+                    data-testid={`health-${snapshot.component}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Icon className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{getHealthLabel(snapshot.component)}</span>
+                      </div>
+                      <div 
+                        className={`w-3 h-3 rounded-full ${getStatusColor(snapshot.status)}`}
+                        data-testid={`health-dot-${snapshot.component}`}
+                        title={snapshot.status}
+                      />
+                    </div>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      {metrics && (
+                        <>
+                          <div className="flex justify-between">
+                            <span>Uptime</span>
+                            <span className="font-mono">{metrics.uptime?.toFixed(1) ?? '-'}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Latency</span>
+                            <span className="font-mono">{metrics.latency ?? '-'}ms</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Errors (24h)</span>
+                            <span className="font-mono">{metrics.errors24h ?? 0}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate" title={snapshot.message || ''}>
+                      {snapshot.message || 'No status message'}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

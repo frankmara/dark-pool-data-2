@@ -13,6 +13,7 @@ import PostAnalytics from "@/pages/post-analytics";
 import PostConstructor from "@/pages/post-constructor";
 import DataFeeds from "@/pages/data-feeds";
 import WorkflowCanvas from "@/pages/workflow-canvas";
+import OpsCenter from "@/pages/ops-center";
 import Settings from "@/pages/settings";
 import Help from "@/pages/help";
 import NotFound from "@/pages/not-found";
@@ -88,6 +89,7 @@ function AppContent() {
               <Route path="/constructor" component={PostConstructor} />
               <Route path="/feeds" component={DataFeeds} />
               <Route path="/workflow" component={WorkflowCanvas} />
+              <Route path="/ops-center" component={OpsCenter} />
               <Route path="/settings" component={Settings} />
               <Route path="/help" component={Help} />
               <Route component={NotFound} />

@@ -204,3 +204,61 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// System Logs Schema
+export const systemLogs = pgTable("system_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  timestamp: text("timestamp").notNull(),
+  component: varchar("component", { length: 50 }).notNull(),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  message: text("message"),
+  metadata: jsonb("metadata"),
+});
+
+export const insertSystemLogSchema = createInsertSchema(systemLogs).omit({ id: true });
+export type InsertSystemLog = z.infer<typeof insertSystemLogSchema>;
+export type SystemLog = typeof systemLogs.$inferSelect;
+
+// Notification Channels Schema
+export const notificationChannels = pgTable("notification_channels", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: varchar("type", { length: 20 }).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  endpoint: text("endpoint").notNull(),
+  enabled: boolean("enabled").default(true),
+  config: jsonb("config"),
+});
+
+export const insertNotificationChannelSchema = createInsertSchema(notificationChannels).omit({ id: true });
+export type InsertNotificationChannel = z.infer<typeof insertNotificationChannelSchema>;
+export type NotificationChannel = typeof notificationChannels.$inferSelect;
+
+// Alert Rules Schema
+export const alertRules = pgTable("alert_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 100 }).notNull(),
+  alertType: varchar("alert_type", { length: 50 }).notNull(),
+  enabled: boolean("enabled").default(true),
+  threshold: real("threshold"),
+  channelIds: text("channel_ids").array(),
+  config: jsonb("config"),
+});
+
+export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true });
+export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
+export type AlertRule = typeof alertRules.$inferSelect;
+
+// Health Snapshots Schema
+export const healthSnapshots = pgTable("health_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  component: varchar("component", { length: 50 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  lastCheck: text("last_check").notNull(),
+  message: text("message"),
+  metrics: jsonb("metrics"),
+});
+
+export const insertHealthSnapshotSchema = createInsertSchema(healthSnapshots).omit({ id: true });
+export type InsertHealthSnapshot = z.infer<typeof insertHealthSnapshotSchema>;
+export type HealthSnapshot = typeof healthSnapshots.$inferSelect;
