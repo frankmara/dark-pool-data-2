@@ -1,0 +1,34 @@
+For Gamma Exposure: "Build a gamma exposure chart from Unusual Whales data: X-axis strikes, Y-axis net gamma (positive green for long, negative red for short); bar format with total dealer exposure gauge; highlight gamma flips or walls with arrows and labels like 'Potential Pin at Strike – 85th Percentile Unusuality'; overlay NaNs as hatched bars."
+For Historical vs. Implied Vol: "Create a dual-line chart: Blue for 30-day historical vol, cyan for at-the-money implied vol over 90 days; shade spreads >10 points red for 'Vol Premium Anomaly'; include percentile rank inset and flag data gaps with dashed lines."
+For Greeks Surface: "Generate a contour surface plot of Greeks (delta/vega selectable via dropdown): Strikes on X, expiries on Y, color gradient for values (hot red for high vega); circle whale-impacted areas with Unusual Whales tags; render NaNs as blank zones with text 'Missing OI – Off-Exchange Suspected'."
+For Trade Tape Timeline: "Design a timeline chart of options flow: X-axis time (intraday/hourly), Y-axis cumulative premium; bars colored by sentiment (green/red/purple); plot whale events as spikes with details (e.g., '$5M Sweep'); include rolling put/call ratio line and NaN skips as gray gaps."
+For Sector Correlation: "Build a correlation heatmap: Matrix of IV/price correlations to 5-10 sector peers (pull from API); color scale from -1 (blue) to +1 (red); highlight decouplings <-0.5 or >0.9 with borders and labels 'Unusual Decoupling – Probe Catalyst'; mask NaNs white with overlays."
+For Max Pain: "Create a max pain chart: Strikes on X, stacked bars for call/put OI on Y; mark theoretical max pain strike with a vertical line and note 'Dealer Neutrality Point'; shade unusual OI buildups red; handle missing data as dashed estimates."
+For IV Rank Histogram: "Produce an IV rank histogram: Bins for 0-100% percentiles over 1 year; current IV as a bold vertical line with label 'Current: 92nd Percentile – Elevated'; overlay distribution curve; flag NaN periods as skipped bins."
+For Options vs. Stock Volume Ratio: "Dual-axis chart: Left Y for options premium vol (bars), right Y for ratio to stock ADV (line); time on X (30 days); spike thresholds >200% in amber with 'Unusual Flow Signal'; bridge NaNs with interpolated dashes."
+
+All the Different Information That Should Be Posted
+To make the thread "larger and more institutional," layer in these elements across posts. As a reader, I'd want exhaustive coverage: raw metrics, derived insights, risk scenarios, cross-references, and caveats. Structure as 8-10 tweets for depth without fluff.
+
+Raw Metrics: Premium totals, contract counts, top trades, percentiles (e.g., "Flow Volume: 95th Percentile").
+Derived Insights: Implications like "Gamma wall suggests price pin," or "IV premium indicates event hedging."
+Risk/Scenarios: Probabilities (e.g., "60% distribution risk"), conviction (medium/high), tail events.
+Cross-References: Ties to macro (e.g., sector vols), historical parallels, peer comparisons.
+Data Quality: NaN discussions, suggestions (e.g., "Query FINRA for gaps").
+Visuals: 1-2 charts per post, with alt-text (e.g., "Gamma Exposure Chart Showing Pin Levels").
+Sources/Disclaimers: Credit Unusual Whales, timestamp, "Not advice—DYOR."
+Calls to Action: "Monitor lit flow," "Cross-check with scanners."
+
+Example Institutional-Grade Tweet Examples
+Formatted as X threads (use #InstitutionalFlow #OptionsAnalysis). Keep neutral, data-heavy; embed chart images via [Embedded Chart Image] placeholders.
+Standalone Tweet Example (With New Chart):
+"Institutional Scan (@unusual_whales): Options vol at 250% of stock ADV (92nd percentile). IV rank histogram flags current levels as elevated. Potential for vol crush if no catalyst. Data gaps in OI noted—suggest deeper tape analysis. #DarkPools [Embedded IV Rank Histogram Image]"
+Extended Thread Example (8/8 Format, Incorporating New Charts):
+1/8: Institutional Flow Alert: Unusual premium spike via @unusual_whales. Total: $1.5B (90th percentile). Put/call: 2.2:1. Initial heatmap reveals bearish clustering. [Embedded Options Flow Heatmap Image]
+2/8: Volatility Breakdown: Smile chart shows put-side skew at 12-month high. Overlay historical vs. implied highlights 15-point premium—potential overhedge signal. [Embedded Historical vs. Implied Vol Chart Image]
+3/8: Greeks Analysis: Surface plot indicates vega concentration in front-month. Unusuality: 85th percentile buildup. NaNs in far strikes flagged for off-exchange probe. [Embedded Greeks Surface Plot Image]
+4/8: Gamma Positioning: Exposure chart reveals wall at key strike, suggesting dealer hedging pin. Net gamma: +$200M long. Scenarios: 55% consolidation prob. [Embedded Gamma Exposure Chart Image]
+5/8: Trade Dynamics: Timeline shows intraday whale sweeps peaking mid-session. Ratio to stock vol elevated—conviction medium, tail risk reversal 20%. [Embedded Trade Tape Timeline Image]
+6/8: Sector Context: Correlation heatmap to peers decoupling (-0.4 avg.). Implies isolated risk; monitor for contagion. Data caveats: Partial NaNs in correlations. [Embedded Sector Correlation Heatmap Image]
+7/8: Pain & Rank: Max pain at central strike; IV histogram at 88th percentile signals rich vol. Cross-reference with historical events for parallels. [Embedded Max Pain and IV Rank Composite Image]
+8/8: Synthesis: Overall unusuality score 82/100. Recommendation: Track follow-through in lit markets. Not investment advice—conduct due diligence. Sources: Unusual Whales API. #InstitutionalResearch [Embedded Full Dashboard Composite Image]
