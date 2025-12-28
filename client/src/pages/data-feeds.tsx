@@ -33,7 +33,7 @@ import {
   BarChart3,
   AlertCircle
 } from "lucide-react";
-import { SiTwitter } from "react-icons/si";
+import { SiX } from "react-icons/si";
 
 function formatCurrency(value: number): string {
   if (value >= 1000000) {
@@ -472,7 +472,7 @@ export default function DataFeeds() {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-md bg-card border border-border flex items-center justify-center">
                         {connector.provider === "twitter" ? (
-                          <SiTwitter className="w-5 h-5" />
+                          <SiX className="w-5 h-5" />
                         ) : connector.type === "market-data" ? (
                           <Database className="w-5 h-5 text-primary" />
                         ) : connector.type === "filings" ? (

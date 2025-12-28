@@ -12,6 +12,23 @@ import {
   insertScannerConfigSchema,
   insertMarketEventSchema
 } from "@shared/schema";
+import { z } from "zod";
+
+const scannerConfigUpdateSchema = z.object({
+  name: z.string().optional(),
+  enabled: z.boolean().optional(),
+  refreshIntervalMs: z.number().int().min(60000).max(3600000).optional(),
+  darkPoolMinNotional: z.number().min(0).optional(),
+  darkPoolMinAdvPercent: z.number().min(0).max(100).optional(),
+  optionsMinPremium: z.number().min(0).optional(),
+  optionsMinOiChangePercent: z.number().min(0).optional(),
+  optionsSweepMinSize: z.number().min(0).optional(),
+  includeBlockTrades: z.boolean().optional(),
+  includeVenueImbalance: z.boolean().optional(),
+  includeInsiderFilings: z.boolean().optional(),
+  includeCatalystEvents: z.boolean().optional(),
+  lastRun: z.string().nullable().optional(),
+}).strict();
 
 export async function registerRoutes(
   httpServer: Server,
@@ -49,7 +66,12 @@ export async function registerRoutes(
 
   app.patch("/api/scanner/config", async (req, res) => {
     try {
-      const config = await storage.updateScannerConfig(req.body);
+      const result = scannerConfigUpdateSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error.message });
+      }
+      
+      const config = await storage.updateScannerConfig(result.data);
       res.json(config);
     } catch (error) {
       res.status(500).json({ error: "Failed to update scanner config" });
