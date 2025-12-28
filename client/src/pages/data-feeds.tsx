@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,8 @@ function formatCurrency(value: number): string {
 
 export default function DataFeeds() {
   const { toast } = useToast();
+  const hasAutoTested = useRef(false);
+  const [isTestingAll, setIsTestingAll] = useState(false);
   
   const { data: connectors = [], isLoading: connectorsLoading } = useQuery<ApiConnector[]>({
     queryKey: ['/api/connectors'],
@@ -77,9 +80,10 @@ export default function DataFeeds() {
 
   const testConnectorMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest('POST', `/api/connectors/${id}/test`);
+      const response = await apiRequest('POST', `/api/connectors/${id}/test`);
+      return response.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { success: boolean; message: string }) => {
       queryClient.invalidateQueries({ queryKey: ['/api/connectors'] });
       queryClient.invalidateQueries({ queryKey: ['/api/connectors/keys/status'] });
       if (data.success) {
@@ -89,6 +93,44 @@ export default function DataFeeds() {
       }
     },
   });
+
+  const testAllConnectors = async () => {
+    if (connectors.length === 0) return;
+    setIsTestingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+    
+    for (const connector of connectors) {
+      try {
+        const response = await apiRequest('POST', `/api/connectors/${connector.id}/test`);
+        const result = await response.json() as { success: boolean };
+        if (result.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch {
+        failCount++;
+      }
+    }
+    
+    await queryClient.invalidateQueries({ queryKey: ['/api/connectors'] });
+    await queryClient.invalidateQueries({ queryKey: ['/api/connectors/keys/status'] });
+    setIsTestingAll(false);
+    
+    toast({
+      title: "Connection Test Complete",
+      description: `${successCount} connected, ${failCount} failed`,
+      variant: failCount > 0 && successCount === 0 ? "destructive" : "default"
+    });
+  };
+
+  useEffect(() => {
+    if (!connectorsLoading && connectors.length > 0 && !hasAutoTested.current) {
+      hasAutoTested.current = true;
+      testAllConnectors();
+    }
+  }, [connectorsLoading, connectors.length]);
 
   const updateScannerMutation = useMutation({
     mutationFn: async (updates: Partial<ScannerConfig>) => {
@@ -131,6 +173,15 @@ export default function DataFeeds() {
           <p className="text-muted-foreground text-sm mt-1">Manage your data sources and Master Scanner configuration</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => testAllConnectors()}
+            disabled={isTestingAll || connectorsLoading}
+            data-testid="button-test-all"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isTestingAll ? 'animate-spin' : ''}`} />
+            {isTestingAll ? "Testing..." : "Test All"}
+          </Button>
           <Button 
             variant="outline"
             onClick={() => runScannerMutation.mutate()}

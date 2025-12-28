@@ -80,20 +80,16 @@ async function testProviderConnection(provider: string): Promise<{ success: bool
           body: "grant_type=client_credentials"
         });
         if (!tokenResponse.ok) {
-          const errorText = await tokenResponse.text();
-          return { success: false, message: `Twitter auth failed: ${tokenResponse.status} - Check credentials and app permissions` };
+          if (tokenResponse.status === 403) {
+            return { success: false, message: "Twitter app needs 'Elevated' access. Go to Twitter Developer Portal > Products > Twitter API v2 > Elevated" };
+          }
+          return { success: false, message: `Twitter auth failed: ${tokenResponse.status} - Verify Client ID and Secret are correct` };
         }
-        const tokenData = await tokenResponse.json() as { access_token?: string };
+        const tokenData = await tokenResponse.json() as { access_token?: string; token_type?: string };
         if (!tokenData.access_token) {
           return { success: false, message: "Twitter did not return access token" };
         }
-        const verifyResponse = await fetch("https://api.twitter.com/2/users/me", {
-          headers: { "Authorization": `Bearer ${tokenData.access_token}` }
-        });
-        if (!verifyResponse.ok) {
-          return { success: false, message: `Twitter API verification failed: ${verifyResponse.status}` };
-        }
-        return { success: true, message: "Twitter/X connected successfully" };
+        return { success: true, message: "Twitter/X connected successfully (App-only auth)" };
       }
 
       case "polygon": {
