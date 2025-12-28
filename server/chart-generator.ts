@@ -1050,26 +1050,42 @@ export function generateHistoricalVsImpliedVolSvg(data: HistoricalVsImpliedVolDa
   });
 
   // Historical Vol line
-  let hvPath = `M`;
+  let hvPath = '';
+  let hvStarted = false;
   data.historicalVol.forEach((vol, i) => {
     if (!isNaN(vol)) {
-      const x = padding.left + (i / data.dates.length) * chartWidth;
+      const x = padding.left + (i / Math.max(data.dates.length - 1, 1)) * chartWidth;
       const y = padding.top + chartHeight - ((vol - minVol) / (maxVol - minVol)) * chartHeight;
-      hvPath += `${i === 0 || isNaN(data.historicalVol[i-1]) ? 'M' : 'L'}${x},${y} `;
+      if (!hvStarted) {
+        hvPath = `M${x.toFixed(1)},${y.toFixed(1)}`;
+        hvStarted = true;
+      } else {
+        hvPath += ` L${x.toFixed(1)},${y.toFixed(1)}`;
+      }
     }
   });
-  svg += `<path d="${hvPath}" fill="none" stroke="#3B82F6" stroke-width="2"/>`;
+  if (hvPath) {
+    svg += `<path d="${hvPath}" fill="none" stroke="#3B82F6" stroke-width="2"/>`;
+  }
 
   // Implied Vol line
-  let ivPath = `M`;
+  let ivPath = '';
+  let ivStarted = false;
   data.impliedVol.forEach((vol, i) => {
     if (!isNaN(vol)) {
-      const x = padding.left + (i / data.dates.length) * chartWidth;
+      const x = padding.left + (i / Math.max(data.dates.length - 1, 1)) * chartWidth;
       const y = padding.top + chartHeight - ((vol - minVol) / (maxVol - minVol)) * chartHeight;
-      ivPath += `${i === 0 || isNaN(data.impliedVol[i-1]) ? 'M' : 'L'}${x},${y} `;
+      if (!ivStarted) {
+        ivPath = `M${x.toFixed(1)},${y.toFixed(1)}`;
+        ivStarted = true;
+      } else {
+        ivPath += ` L${x.toFixed(1)},${y.toFixed(1)}`;
+      }
     }
   });
-  svg += `<path d="${ivPath}" fill="none" stroke="#06B6D4" stroke-width="2"/>`;
+  if (ivPath) {
+    svg += `<path d="${ivPath}" fill="none" stroke="#06B6D4" stroke-width="2"/>`;
+  }
 
   // Percentile inset
   svg += `<rect x="${width - padding.right + 10}" y="${padding.top}" width="80" height="60" fill="#1a1a2e" rx="6" stroke="#374151" stroke-width="1"/>`;
