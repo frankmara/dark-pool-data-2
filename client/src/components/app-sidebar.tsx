@@ -60,6 +60,12 @@ const navigationItems = [
     icon: FileText,
     description: "System logs & monitoring"
   },
+  {
+    title: "Test Feed",
+    url: "/test-feed",
+    icon: Zap,
+    description: "Preview generated posts"
+  },
 ];
 
 const secondaryItems = [

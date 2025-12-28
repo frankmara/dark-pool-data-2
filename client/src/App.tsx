@@ -14,6 +14,7 @@ import PostConstructor from "@/pages/post-constructor";
 import DataFeeds from "@/pages/data-feeds";
 import WorkflowCanvas from "@/pages/workflow-canvas";
 import OpsCenter from "@/pages/ops-center";
+import TestFeed from "@/pages/test-feed";
 import Settings from "@/pages/settings";
 import Help from "@/pages/help";
 import NotFound from "@/pages/not-found";
@@ -90,6 +91,7 @@ function AppContent() {
               <Route path="/feeds" component={DataFeeds} />
               <Route path="/workflow" component={WorkflowCanvas} />
               <Route path="/ops-center" component={OpsCenter} />
+              <Route path="/test-feed" component={TestFeed} />
               <Route path="/settings" component={Settings} />
               <Route path="/help" component={Help} />
               <Route component={NotFound} />
