@@ -19,9 +19,7 @@ import {
 import { z } from "zod";
 import { 
   fetchUnusualWhalesData, 
-  getEnrichedTickerData,
-  generateMockDarkPoolPrint,
-  generateMockOptionsSweep 
+  getEnrichedTickerData
 } from "./live-data-service";
 import { 
   generateChartSvg, 
@@ -804,13 +802,11 @@ export async function registerRoutes(
         const selected = allLive[Math.floor(Math.random() * allLive.length)];
         dataItem = { ...selected, isLive: true };
       } else {
-        // Fall back to mock data generation
-        const useDarkPool = Math.random() > 0.5;
-        if (useDarkPool) {
-          dataItem = { type: 'dark_pool', data: generateMockDarkPoolPrint(), isLive: false };
-        } else {
-          dataItem = { type: 'options', data: generateMockOptionsSweep(), isLive: false };
-        }
+        // No mock data - return error when no real data available
+        return res.status(503).json({ 
+          error: "No live data available from Unusual Whales API. Please check your API key and try again.",
+          details: "The API returned no dark pool or options flow data. This may be due to market hours, API rate limits, or connectivity issues."
+        });
       }
       
       const post = await generateTestPost(dataItem, isLiveData);
@@ -934,20 +930,16 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       }
     ];
   } else {
-    const price = parseFloat(data.price) || 150;
-    // Calculate volume from value/price if size is missing/zero
+    const price = parseFloat(data.price) || 0;
+    // Use actual volume data from API - no mock fallbacks
     let rawVolume = data.volume || data.size || 0;
+    // If size is 0 but value exists, calculate from value/price
     if (rawVolume === 0 && data.value && price > 0) {
       rawVolume = Math.round(data.value / price);
     }
-    // Fallback to realistic mock if still 0 OR if calculated volume is unrealistically small
-    // Institutional dark pool prints are typically at least 50K shares
-    if (rawVolume < 50000) {
-      rawVolume = Math.floor(50000 + Math.random() * 950000);
-    }
     const volumeM = (rawVolume / 1000000).toFixed(2);
-    // Calculate notional from volume if not provided or too small
-    let notionalVal = data.value && data.value > 1000000 ? data.value : rawVolume * price;
+    // Use actual notional value from API, or calculate from volume*price
+    const notionalVal = data.value || (rawVolume * price);
     const notional = (notionalVal / 1000000).toFixed(1);
     const flowType = data.flowType || 'Accumulation';
     const venue = data.venue || 'DARK';

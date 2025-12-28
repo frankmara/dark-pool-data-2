@@ -220,3 +220,9 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
   - Enhanced legends with clear color coding and element explanations
   - Source attribution footers (e.g., "DARK POOL DATA | Source: Options Analytics")
   - 5-post thread format with institutional metrics: ADV %, VWAP delta, dealer gamma positioning, IV percentiles, probability scenarios
+- **Unusual Whales API Integration Fixed**:
+  - Dark Pool endpoint: `/api/darkpool/recent` - returns live prints (ticker, size, price, premium, executed_at)
+  - Options Flow endpoint: `/api/option-trades/flow-alerts` - returns live alerts (ticker, total_premium, total_size, strike, expiry, type)
+  - Field parsing updated to match actual API response structure
+  - Zero mock data - all posts marked with `isLiveData: true` when sourced from live APIs
+  - Returns 503 error when no live API data available instead of generating fake data

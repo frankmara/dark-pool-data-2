@@ -40,9 +40,11 @@ interface TickerContext {
 export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrint[], options: OptionsSweep[] }> {
   const apiKey = process.env.UNUSUAL_WHALES_API_KEY;
   if (!apiKey) {
-    console.log("No Unusual Whales API key, using generated data");
+    console.error("[UW] No Unusual Whales API key configured");
     return { darkPool: [], options: [] };
   }
+
+  console.error("[UW] Fetching live data from Unusual Whales API...");
 
   try {
     const [darkPoolRes, optionsRes] = await Promise.all([
@@ -52,7 +54,7 @@ export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrin
           "Accept": "application/json"
         }
       }),
-      fetch("https://api.unusualwhales.com/api/option-trades/flow", {
+      fetch("https://api.unusualwhales.com/api/option-trades/flow-alerts", {
         headers: { 
           "Authorization": `Bearer ${apiKey}`,
           "Accept": "application/json"
@@ -60,8 +62,8 @@ export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrin
       })
     ]);
 
-    console.log("Dark Pool API status:", darkPoolRes.status);
-    console.log("Options API status:", optionsRes.status);
+    console.error("[UW] Dark Pool API status:", darkPoolRes.status);
+    console.error("[UW] Options API status:", optionsRes.status);
     
     const darkPoolRaw = darkPoolRes.ok ? await darkPoolRes.json() : { data: [] };
     const optionsRaw = optionsRes.ok ? await optionsRes.json() : { data: [] };
@@ -70,12 +72,12 @@ export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrin
     const darkPoolData = Array.isArray(darkPoolRaw) ? darkPoolRaw : (darkPoolRaw.data || darkPoolRaw.result || []);
     const optionsData = Array.isArray(optionsRaw) ? optionsRaw : (optionsRaw.data || optionsRaw.result || optionsRaw.trades || []);
     
-    console.log("Dark pool records:", darkPoolData.length);
-    console.log("Options records:", optionsData.length);
+    console.error("[UW] Dark pool records:", darkPoolData.length);
+    console.error("[UW] Options records:", optionsData.length);
     
     // Log sample of raw response to debug field names
     if (darkPoolData.length > 0) {
-      console.log("Dark pool sample record:", JSON.stringify(darkPoolData[0]).slice(0, 500));
+      console.error("[UW] Dark pool sample:", JSON.stringify(darkPoolData[0]).slice(0, 500));
     }
 
     const darkPool: DarkPoolPrint[] = darkPoolData.slice(0, 10).map((d: any) => {
@@ -105,26 +107,29 @@ export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrin
 
     // Log sample of raw response to debug field names
     if (optionsData.length > 0) {
-      console.log("Options sample record:", JSON.stringify(optionsData[0]).slice(0, 500));
+      console.error("[UW] Options sample:", JSON.stringify(optionsData[0]).slice(0, 500));
     }
 
     const options: OptionsSweep[] = optionsData.slice(0, 10).map((o: any) => {
-      const rawPremium = o.premium || o.total_premium || o.cost || o.value || 0;
+      // UW flow-alerts uses: total_premium, total_size, strike, expiry, type, ticker, created_at
+      const rawPremium = o.total_premium || o.premium || o.cost || o.value || 0;
       const premium = typeof rawPremium === 'string' ? parseFloat(rawPremium.replace(/[$,]/g, '')) : parseFloat(rawPremium) || 0;
       
-      const rawContracts = o.size || o.contracts || o.volume || o.qty || 0;
+      const rawContracts = o.total_size || o.size || o.contracts || o.volume || o.qty || 0;
       const contracts = typeof rawContracts === 'string' ? parseInt(rawContracts.replace(/,/g, '')) : parseInt(rawContracts) || 0;
+      
+      const optionType = (o.type || o.option_type || o.put_call || "call").toLowerCase();
       
       return {
         ticker: o.ticker || o.symbol || o.underlying || "UNKNOWN",
         strike: parseFloat(o.strike || o.strike_price) || 0,
         expiry: o.expiry || o.expiration || o.exp_date || o.expiration_date || "",
-        type: (o.type || o.option_type || o.put_call || "call").toLowerCase() as 'call' | 'put',
+        type: optionType as 'call' | 'put',
         premium,
         contracts,
         delta: parseFloat(o.delta) || 0,
-        timestamp: o.timestamp || o.executed_at || o.date || new Date().toISOString(),
-        sentiment: (o.type || o.option_type || o.put_call || '').toLowerCase() === 'call' ? 'bullish' : 'bearish'
+        timestamp: o.created_at || o.timestamp || o.executed_at || o.date || new Date().toISOString(),
+        sentiment: optionType === 'call' ? 'bullish' : 'bearish'
       };
     });
 
@@ -263,45 +268,4 @@ export async function getEnrichedTickerData(ticker: string): Promise<TickerConte
   };
 }
 
-export function generateMockDarkPoolPrint(): DarkPoolPrint {
-  const tickers = ['AAPL', 'NVDA', 'TSLA', 'META', 'GOOGL', 'MSFT', 'AMD', 'AMZN', 'SPY', 'QQQ'];
-  const venues = ['DARK', 'FINRA', 'NASDAQ', 'NYSE', 'BATS'];
-  const ticker = tickers[Math.floor(Math.random() * tickers.length)];
-  const price = 100 + Math.random() * 400;
-  const size = Math.floor(10000 + Math.random() * 990000);
-  
-  return {
-    ticker,
-    price: Math.round(price * 100) / 100,
-    size,
-    value: Math.round(price * size),
-    timestamp: new Date().toISOString(),
-    venue: venues[Math.floor(Math.random() * venues.length)],
-    percentOfAdv: Math.round(Math.random() * 15 * 10) / 10,
-    sentiment: Math.random() > 0.5 ? 'bullish' : Math.random() > 0.5 ? 'bearish' : 'neutral'
-  };
-}
-
-export function generateMockOptionsSweep(): OptionsSweep {
-  const tickers = ['AAPL', 'NVDA', 'TSLA', 'META', 'GOOGL', 'MSFT', 'AMD', 'AMZN', 'SPY', 'QQQ'];
-  const ticker = tickers[Math.floor(Math.random() * tickers.length)];
-  const isCall = Math.random() > 0.4;
-  const strike = Math.round((150 + Math.random() * 300) / 5) * 5;
-  const contracts = Math.floor(100 + Math.random() * 4900);
-  const premium = Math.round((contracts * (2 + Math.random() * 18)) * 100);
-  
-  const expiry = new Date();
-  expiry.setDate(expiry.getDate() + Math.floor(7 + Math.random() * 60));
-  
-  return {
-    ticker,
-    strike,
-    expiry: expiry.toISOString().split('T')[0],
-    type: isCall ? 'call' : 'put',
-    premium,
-    contracts,
-    delta: Math.round((isCall ? 0.3 + Math.random() * 0.5 : -0.3 - Math.random() * 0.5) * 100) / 100,
-    timestamp: new Date().toISOString(),
-    sentiment: isCall ? 'bullish' : 'bearish'
-  };
-}
+// Mock data generators removed - all data must come from real APIs
