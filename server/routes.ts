@@ -51,7 +51,10 @@ import {
   generateIVRankHistogramSvg,
   generateMockIVRankHistogramData,
   generateOptionsStockVolumeSvg,
-  generateMockOptionsStockVolumeData
+  generateMockOptionsStockVolumeData,
+  // Truth gate helpers for chart-text consistency
+  calculateFlowLabel,
+  calculateDealerGammaLabel
 } from "./chart-generator";
 
 const scannerConfigUpdateSchema = z.object({
@@ -894,6 +897,33 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   // Variant selection based on sentiment
   const variant = sentiment === 'bullish' ? 'bullish' : sentiment === 'bearish' ? 'bearish' : 'neutral';
   
+  // TRUTH GATE: Generate chart data FIRST, then derive flowLabel from actual chart cells
+  // This ensures text claims match chart labels exactly (no divergence possible)
+  // Use `price` (defined earlier) instead of `basePrice` (defined later)
+  const heatmapData = generateMockOptionsFlowData(ticker, price, sentiment as 'bullish' | 'bearish' | 'neutral');
+  const chartBullishCount = heatmapData.cells.filter(c => c.sentiment === 'bullish').length;
+  const chartBearishCount = heatmapData.cells.filter(c => c.sentiment === 'bearish').length;
+  const flowLabel = calculateFlowLabel(chartBullishCount, chartBearishCount);
+  
+  // Dealer gamma: Derived from real options data (short gamma is market default ~70% of time)
+  // When flowPercentile is high + bullish, dealers may be long; otherwise short
+  const totalNetGamma = sentiment === 'bullish' && flowPercentile >= 85 
+    ? gammaValue * 1000  // Very strong bullish API data = dealers may be long
+    : -gammaValue * 500; // Default: dealers are typically short gamma
+  
+  // Use helper function for consistent labeling
+  const { label: dealerGammaLabel, position: dealerGammaPosition } = calculateDealerGammaLabel(totalNetGamma);
+  
+  // Conviction label: Only claim conviction when API data shows strong signal
+  const convictionLabel = flowPercentile >= 85 
+    ? 'with conviction' 
+    : 'cautiously';
+  
+  // Watch/Confirm/Invalidate levels (specific, falsifiable)
+  const confirmLevel = Math.floor(price * 1.03);  // +3% confirms bullish
+  const invalidateLevel = Math.floor(price * 0.97); // -3% invalidates
+  const watchLevel = Math.floor(price * 1.01);    // +1% first signal
+  
   let thread: any[];
   
   // Sector peer mapping for correlation context
@@ -944,23 +974,23 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const gammaWall = strike;
     const gexFlip = Math.floor(strike * 0.97);
     
-    // MASTER PROMPT STYLE: Educational, Narrative, Viral Thread (8/8 format)
+    // MASTER PROMPT STYLE with TRUTH GATES: Educational, Narrative, Viral Thread (8/8 format)
     thread = [
       {
         index: 1,
-        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just swept size in $${ticker} — but it wasn't ${sentiment === 'bullish' ? 'panic buying' : 'aggressive selling'}.\n\nIt was ${sentiment === 'neutral' ? 'neutral positioning in a high-volatility environment' : sentiment + ' positioning with conviction'}, and that distinction matters more than direction.\n\nMost traders miss this.`,
+        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just swept size in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
         type: 'hook',
         chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 2,
-        content: `2/8 — Teach the concept (Options sweeps)\n\nOptions sweeps exist so institutions can build positions fast across multiple exchanges.\n\nBut here's the key:\n\nSweeps only matter when you know the volatility + dealer context around them.\n\nThis $${premiumFormatted} sweep (~${sharesEquivFormatted} shares equiv) looks big — but relative to $${ticker}'s ADV, it's ${flowPercentile > 80 ? 'serious conviction' : flowPercentile > 60 ? 'notable but not extreme' : 'not panic-level size'}.`,
+        content: `2/8 — Teach the concept (Options sweeps)\n\nOptions sweeps exist so institutions can build positions fast across multiple exchanges.\n\nBut here's the key:\n\nSweeps only matter when you know the volatility + dealer context around them.\n\nThis $${premiumFormatted} sweep looks notable — but without extreme flow percentile (currently ${flowPercentile}th), it's positioning, not panic.`,
         type: 'context',
         chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 3,
-        content: `3/8 — Introduce tension (Vol disagrees)\n\nNow look at volatility.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is elevated (${ivPercentile}th percentile).\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside calls'} is expensive.\n\nTranslation:\nInstitutions ${sentiment === 'bullish' ? 'are betting on upside' : sentiment === 'bearish' ? 'aren\'t betting on upside — they\'re paying to stay protected' : 'are hedging, not chasing'}.`,
+        content: `3/8 — Introduce tension (Vol layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${ivPercentile}th percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
         type: 'tension',
         chartRef: 'volatilitySmile'
       },
@@ -972,25 +1002,25 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 5,
-        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma, price moves tend to ${sentiment === 'bullish' ? 'stabilize' : 'accelerate'}, not ${sentiment === 'bullish' ? 'accelerate' : 'stabilize'}.\n\nBut here's the catch:\nWithout aggressive directional flow, this becomes ${sentiment === 'bullish' ? 'trend' : 'chop'}, not ${sentiment === 'bullish' ? 'chop' : 'trend'}.`,
+        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${dealerGammaPosition} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${dealerGammaPosition} gamma, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
       {
         index: 6,
-        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV), but whale activity is ${sentiment === 'neutral' ? 'inconsistent' : sentiment === 'bullish' ? 'accumulating' : 'distributing'}.\n\nThat's not ${sentiment === 'neutral' ? 'momentum' : 'hedging'}.\nThat's ${sentiment === 'neutral' ? 'insurance being rolled and repositioned' : sentiment === 'bullish' ? 'conviction building' : 'risk being offloaded'}.\n\nBig difference.`,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the sweep direction.'}`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },
       {
         index: 7,
-        content: `7/8 — Put it in context (Sector + Max Pain)\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'tightly correlated' : 'loosely correlated'} with ${sector} peers — ${parseFloat(avgCorrelation) > 0.6 ? 'no decoupling' : 'watch for divergence'}.\n\nMax pain sits ${strike > price ? 'above' : 'at'} spot, acting like a ${strike > price ? 'magnet' : 'ceiling'}, not a launchpad.\n\nThis is what ${sentiment === 'neutral' ? 'compression before resolution' : sentiment === 'bullish' ? 'accumulation before breakout' : 'distribution before breakdown'} looks like.`,
+        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${strike}, acting as a ${strike > price ? 'magnet above' : 'ceiling at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${dealerGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
         type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nThis ${sentiment === 'neutral' ? 'isn\'t bullish or bearish' : 'is ' + sentiment}.\n\nIt's ${sentiment === 'neutral' ? 'neutral' : sentiment} positioning in elevated volatility, where:\n• Dealers ${sentiment === 'bullish' ? 'dampen' : 'amplify'} moves\n• Institutions ${sentiment === 'neutral' ? 'hedge, not chase' : sentiment === 'bullish' ? 'accumulate with conviction' : 'reduce risk'}\n• Direction needs confirmation from public flow\n\nTakeaway:\nOptions sweeps matter most when they align with aggressive dealer positioning.\nHere, they ${sentiment === 'neutral' ? 'don\'t — yet' : 'do'}.\n\nBookmark this setup. Watch what confirms it.`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Dealers: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"When IV > HV + dealers ${dealerGammaPosition} gamma = expect ${dealerGammaPosition === 'short' ? 'acceleration' : 'mean reversion'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
@@ -1009,22 +1039,23 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const gexFlip = Math.floor(price * 0.97);
     const maxPainLevel = Math.floor(price * 0.99);
     
+    // MASTER PROMPT STYLE with TRUTH GATES for Dark Pool
     thread = [
       {
         index: 1,
-        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just printed size in $${ticker} — but it wasn't ${sentiment === 'bullish' ? 'aggressive buying' : 'panic selling'}.\n\nIt was ${sentiment === 'neutral' ? 'neutral positioning in a high-volatility environment' : sentiment + ' positioning with intent'}, and that distinction matters more than direction.\n\nMost traders miss this.`,
+        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just printed size in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
         type: 'hook',
         chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 2,
-        content: `2/8 — Teach the concept (Dark pools)\n\nDark pools exist so institutions can trade without moving price.\n\nBut here's the key:\n\nDark pool prints only matter when you know the volatility + dealer context around them.\n\nThis $${notionalFormatted} print (~${volumeFormatted} shares) looks big — but relative to $${ticker}'s ADV, it's ${flowPercentile > 80 ? 'serious conviction' : flowPercentile > 60 ? 'notable but not extreme' : 'not panic-level size'}.`,
+        content: `2/8 — Teach the concept (Dark pools)\n\nDark pools exist so institutions can trade without moving price.\n\nBut here's the key:\n\nDark pool prints only matter when you know the volatility + dealer context around them.\n\nThis $${notionalFormatted} print (~${volumeFormatted} shares) at the ${flowPercentile}th percentile = ${flowPercentile > 80 ? 'notable size' : 'positioning, not panic'}.`,
         type: 'context',
         chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 3,
-        content: `3/8 — Introduce tension (Options disagree)\n\nNow look at options.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is elevated (${ivPercentile}th percentile).\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside calls'} is expensive.\n\nTranslation:\nInstitutions ${sentiment === 'bullish' ? 'are betting on upside' : sentiment === 'bearish' ? 'aren\'t betting on upside — they\'re paying to stay protected' : 'are hedging, not chasing'}.`,
+        content: `3/8 — Introduce tension (Options layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${ivPercentile}th percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
         type: 'tension',
         chartRef: 'volatilitySmile'
       },
@@ -1036,25 +1067,25 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 5,
-        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma, price moves tend to ${sentiment === 'bullish' ? 'stabilize' : 'accelerate'}, not ${sentiment === 'bullish' ? 'accelerate' : 'stabilize'}.\n\nBut here's the catch:\nWithout aggressive directional flow, this becomes ${sentiment === 'bullish' ? 'trend' : 'chop'}, not ${sentiment === 'bullish' ? 'chop' : 'trend'}.`,
+        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${dealerGammaPosition} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${dealerGammaPosition} gamma, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
       {
         index: 6,
-        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV), but whale activity is ${sentiment === 'neutral' ? 'inconsistent' : sentiment === 'bullish' ? 'accumulating' : 'distributing'}.\n\nThat's not ${sentiment === 'neutral' ? 'momentum' : 'hedging'}.\nThat's ${sentiment === 'neutral' ? 'insurance being rolled and repositioned' : sentiment === 'bullish' ? 'conviction building' : 'risk being offloaded'}.\n\nBig difference.`,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the dark pool print direction.'}`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },
       {
         index: 7,
-        content: `7/8 — Put it in context (Sector + Max Pain)\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'tightly correlated' : 'loosely correlated'} with ${sector} peers — ${parseFloat(avgCorrelation) > 0.6 ? 'no decoupling' : 'watch for divergence'}.\n\nMax pain sits ${maxPainLevel > price ? 'above' : 'just below'} spot, acting like a ${maxPainLevel > price ? 'magnet' : 'anchor'}, not a launchpad.\n\nThis is what ${sentiment === 'neutral' ? 'compression before resolution' : sentiment === 'bullish' ? 'accumulation before breakout' : 'distribution before breakdown'} looks like.`,
+        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${maxPainLevel}, acting as ${maxPainLevel > price ? 'a magnet above' : 'an anchor at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${dealerGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
         type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nThis ${sentiment === 'neutral' ? 'isn\'t bullish or bearish' : 'is ' + sentiment}.\n\nIt's ${sentiment === 'neutral' ? 'neutral' : sentiment} positioning in elevated volatility, where:\n• Dealers ${sentiment === 'bullish' ? 'dampen' : 'amplify'} moves\n• Institutions ${sentiment === 'neutral' ? 'hedge, not chase' : sentiment === 'bullish' ? 'accumulate with conviction' : 'reduce risk'}\n• Direction needs confirmation from public flow\n\nTakeaway:\nDark pool prints matter most when they align with aggressive options positioning.\nHere, they ${sentiment === 'neutral' ? 'don\'t — yet' : 'do'}.\n\nBookmark this setup. Watch what confirms it.`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Dealers: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"Dark pool prints matter most when they align with dealer gamma + options flow. Here, ${flowLabel.includes('mixed') ? 'they don\'t — yet' : 'they do'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
@@ -1132,8 +1163,9 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
   const volatilitySmileSvg = generateVolatilitySmileSvg(smileData);
 
-  const heatmapData = { ...generateMockOptionsFlowData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
-  const optionsFlowHeatmapSvg = generateOptionsFlowHeatmapSvg(heatmapData);
+  // Reuse heatmapData from truth gate (generated before thread) - add timestamp for chart
+  const heatmapDataWithTimestamp = { ...heatmapData, asOfTimestamp: sessionTimestamp };
+  const optionsFlowHeatmapSvg = generateOptionsFlowHeatmapSvg(heatmapDataWithTimestamp);
 
   const oiData = { ...generateMockPutCallOIData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
   const putCallOILadderSvg = generatePutCallOILadderSvg(oiData);

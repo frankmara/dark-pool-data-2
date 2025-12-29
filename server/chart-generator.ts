@@ -1,3 +1,34 @@
+// TRUTH GATE HELPERS: Export these to ensure thread text matches chart labels exactly
+export interface ChartMetadata {
+  flowLabel: 'Bullish positioning dominant' | 'Bearish flow elevated' | 'Mixed sentiment across strikes';
+  dealerGammaLabel: 'long gamma - expect mean reversion' | 'short gamma - amplified moves likely';
+  dealerGammaPosition: 'long' | 'short';
+  skewLabel: string;
+}
+
+// Calculate flow label using same logic as chart-generator (line 558)
+export function calculateFlowLabel(bullishCells: number, bearishCells: number): ChartMetadata['flowLabel'] {
+  if (bullishCells > bearishCells * 1.5) return 'Bullish positioning dominant';
+  if (bearishCells > bullishCells * 1.5) return 'Bearish flow elevated';
+  return 'Mixed sentiment across strikes';
+}
+
+// Calculate dealer gamma label using same logic as chart-generator (lines 972-973)
+export function calculateDealerGammaLabel(totalNetGamma: number): { label: ChartMetadata['dealerGammaLabel']; position: ChartMetadata['dealerGammaPosition'] } {
+  if (totalNetGamma > 0) {
+    return { label: 'long gamma - expect mean reversion', position: 'long' };
+  }
+  return { label: 'short gamma - amplified moves likely', position: 'short' };
+}
+
+// Calculate skew label using same logic as volatility smile chart (line 464)
+export function calculateSkewLabel(putIV: number, callIV: number): string {
+  const putSkew = putIV - callIV;
+  if (putSkew > 5) return 'Put skew elevated - hedging demand';
+  if (putSkew < -5) return 'Call skew - bullish positioning';
+  return 'Balanced smile - neutral market';
+}
+
 // Time synchronization context for consistent timestamps across all charts
 export interface SessionContext {
   asOfTime: Date;
@@ -782,7 +813,7 @@ export function generateMockVolatilitySmileData(ticker: string, spotPrice: numbe
   };
 }
 
-export function generateMockOptionsFlowData(ticker: string, spotPrice: number): OptionsFlowHeatmapData {
+export function generateMockOptionsFlowData(ticker: string, spotPrice: number, sentimentBias?: 'bullish' | 'bearish' | 'neutral'): OptionsFlowHeatmapData {
   const baseStrike = Math.round(spotPrice / 5) * 5;
   const strikes = Array.from({ length: 10 }, (_, i) => baseStrike - 25 + i * 5);
   const expiries = ['Jan 10', 'Jan 17', 'Jan 24', 'Feb 21', 'Mar 21'];
@@ -791,12 +822,26 @@ export function generateMockOptionsFlowData(ticker: string, spotPrice: number): 
   strikes.forEach(strike => {
     expiries.forEach(expiry => {
       if (Math.random() > 0.3) {
-        const sentiments: ('bullish' | 'bearish' | 'neutral')[] = ['bullish', 'bearish', 'neutral'];
+        // Bias cell sentiment toward API-provided sentiment for truth gate consistency
+        let sentiment: 'bullish' | 'bearish' | 'neutral';
+        if (sentimentBias === 'bullish') {
+          // 60% bullish, 25% neutral, 15% bearish
+          const r = Math.random();
+          sentiment = r < 0.60 ? 'bullish' : r < 0.85 ? 'neutral' : 'bearish';
+        } else if (sentimentBias === 'bearish') {
+          // 60% bearish, 25% neutral, 15% bullish  
+          const r = Math.random();
+          sentiment = r < 0.60 ? 'bearish' : r < 0.85 ? 'neutral' : 'bullish';
+        } else {
+          // Neutral: balanced distribution (33% each)
+          const sentiments: ('bullish' | 'bearish' | 'neutral')[] = ['bullish', 'bearish', 'neutral'];
+          sentiment = sentiments[Math.floor(Math.random() * 3)];
+        }
         cells.push({
           strike,
           expiry,
           premium: Math.floor(Math.random() * 5000000) + 100000,
-          sentiment: sentiments[Math.floor(Math.random() * 3)],
+          sentiment,
           contracts: Math.floor(Math.random() * 5000) + 100,
           tags: Math.random() > 0.7 ? ['SWEEP', 'UNUSUAL'] : undefined
         });
@@ -985,13 +1030,18 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
   return svg;
 }
 
-export function generateMockGammaExposureData(ticker: string, spotPrice: number): GammaExposureData {
+export function generateMockGammaExposureData(ticker: string, spotPrice: number, dealerGammaBias?: 'long' | 'short'): GammaExposureData {
   const baseStrike = Math.round(spotPrice / 5) * 5;
   const strikes = Array.from({ length: 20 }, (_, i) => baseStrike - 45 + i * 5);
   
+  // Bias gamma based on dealer position (for truth gate consistency)
+  // Short gamma = negative total exposure, Long gamma = positive total exposure
+  const biasFactor = dealerGammaBias === 'long' ? 0.3 : dealerGammaBias === 'short' ? -0.3 : 0;
+  
   const netGamma = strikes.map(strike => {
     const distFromSpot = (strike - spotPrice) / spotPrice;
-    const baseGamma = (Math.random() - 0.5) * 500000000;
+    // Apply bias: shift the random range toward positive (long) or negative (short)
+    const baseGamma = (Math.random() - 0.5 + biasFactor) * 500000000;
     return baseGamma * Math.exp(-Math.abs(distFromSpot) * 3);
   });
 

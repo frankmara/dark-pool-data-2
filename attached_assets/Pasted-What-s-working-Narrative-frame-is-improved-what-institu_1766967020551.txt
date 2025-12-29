@@ -1,0 +1,72 @@
+What’s working
+
+Narrative frame is improved (“what institutions are doing vs what traders think”) — that’s a good recurring series title. 
+
+Dark Pool Insights - Replit
+
+More teaching moments (sweeps, IV vs HV, gamma) than your original TSLA log-style thread.
+
+What’s breaking it (and why it won’t grow fast)
+1) You’re making claims the charts don’t support
+
+Tweet 1 says “bullish positioning with conviction.” 
+
+Dark Pool Insights - Replit
+
+
+But your heatmap says “Mixed sentiment across strikes.” 
+
+Dark Pool Insights - Replit
+
+
+That contradiction = people stop trusting you.
+
+2) The sweep details look wrong / unbelievable
+
+You show:
+
+$16K, 30 contracts, $71 call 2026-01-16
+
+And a breakeven $233.00 
+
+Dark Pool Insights - Replit
+
+That breakeven is so extreme vs spot ($71) that readers will assume the engine is broken (or you don’t know options). Even if it’s a data bug, it reads like nonsense. Fixing data quality or filtering is mandatory.
+
+3) Dealer gamma section is internally inconsistent
+
+Your gamma chart section shows dealer net SHORT (negative) on the gamma exposure chart. 
+
+Dark Pool Insights - Replit
+
+
+But the text says “Dealers are long gamma near $71.” 
+
+Dark Pool Insights - Replit
+
+
+Again: trust leak.
+
+4) The story is still generic
+
+It’s still mostly: “Here’s a concept. Here’s a chart. Here’s a statement.”
+To grow fast you need specificity + falsifiable checkpoints:
+
+“If X happens tomorrow, it confirms. If Y happens, it invalidates.”
+That makes people return to see if you were right.
+
+5) You’re missing engagement mechanics
+
+No strong question. No “save this rule.” No prediction framing. No “what to watch tomorrow.”
+
+The fixes (what to tell Replit to do)
+
+Truth gate: every claim must be consistent with the chart labels (“mixed”, “dealer short”, etc.). If not, rewrite wording automatically.
+
+Data sanity filters: suppress/flag sweeps with absurd breakevens or tiny notional size, or relabel them as “small probe / lotto” instead of “conviction.”
+
+Add “Watch / Confirm / Invalidate” in tweet 7 or 8 (always).
+
+Add 1 reusable mental model per thread (“When IV>HV + dealers short gamma = expect acceleration”).
+
+Add one question that forces replies (not yes/no).
