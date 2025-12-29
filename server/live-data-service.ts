@@ -268,4 +268,216 @@ export async function getEnrichedTickerData(ticker: string): Promise<TickerConte
   };
 }
 
+// ============================================================================
+// POLYGON OPTIONS CHAIN DATA (15-min delayed structural context)
+// ============================================================================
+
+export interface OptionsContract {
+  contractSymbol: string;
+  strike: number;
+  expiry: string;
+  type: 'call' | 'put';
+  openInterest: number;
+  volume: number;
+  impliedVolatility: number;
+  delta: number;
+  gamma: number;
+  theta: number;
+  vega: number;
+  lastPrice: number;
+  bid: number;
+  ask: number;
+}
+
+export interface OptionsChainData {
+  ticker: string;
+  spotPrice: number;
+  fetchedAt: string;  // ISO timestamp for transparency
+  isDelayed: boolean; // Always true for Polygon Starter
+  contracts: OptionsContract[];
+  // Aggregated data for charts (plain objects for JSON serialization)
+  strikes: number[];
+  expiries: string[];
+  callOIByStrike: Record<number, number>;
+  putOIByStrike: Record<number, number>;
+  gammaByStrike: Record<number, number>;
+  ivByExpiry: Record<string, number>;
+}
+
+// Simple in-memory cache for options chain data (15-min refresh)
+const optionsChainCache: Map<string, { data: OptionsChainData; timestamp: number }> = new Map();
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsChainData | null> {
+  const apiKey = process.env.POLYGON_API_KEY;
+  if (!apiKey) {
+    console.error("[Polygon] No API key configured for options chain");
+    return null;
+  }
+
+  // Check cache first
+  const cached = optionsChainCache.get(ticker);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+    console.error(`[Polygon] Using cached options chain for ${ticker}`);
+    return cached.data;
+  }
+
+  console.error(`[Polygon] Fetching options chain for ${ticker}...`);
+
+  try {
+    // Polygon Options Chain Snapshot endpoint
+    const response = await fetch(
+      `https://api.polygon.io/v3/snapshot/options/${ticker}?limit=250&apiKey=${apiKey}`,
+      { headers: { 'Accept': 'application/json' } }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Polygon] Options chain error: ${response.status} - ${errorText}`);
+      
+      // Check if it's a subscription issue
+      if (response.status === 403 || response.status === 401) {
+        console.error("[Polygon] Options data requires paid Options tier subscription");
+      }
+      return null;
+    }
+
+    const data = await response.json();
+    const results = data.results || [];
+    
+    console.error(`[Polygon] Received ${results.length} options contracts for ${ticker}`);
+
+    if (results.length === 0) {
+      console.error(`[Polygon] No options data available for ${ticker}`);
+      return null;
+    }
+
+    // Get spot price from first result's underlying asset
+    const spotPrice = results[0]?.underlying_asset?.price || 0;
+    
+    // Parse contracts
+    const contracts: OptionsContract[] = results.map((r: any) => {
+      const details = r.details || {};
+      const greeks = r.greeks || {};
+      const dayData = r.day || {};
+      const lastQuote = r.last_quote || {};
+      
+      return {
+        contractSymbol: details.ticker || r.ticker || '',
+        strike: details.strike_price || 0,
+        expiry: details.expiration_date || '',
+        type: details.contract_type === 'call' ? 'call' : 'put',
+        openInterest: r.open_interest || 0,
+        volume: dayData.volume || 0,
+        impliedVolatility: r.implied_volatility || 0,
+        delta: greeks.delta || 0,
+        gamma: greeks.gamma || 0,
+        theta: greeks.theta || 0,
+        vega: greeks.vega || 0,
+        lastPrice: dayData.close || r.last_trade?.price || 0,
+        bid: lastQuote.bid || 0,
+        ask: lastQuote.ask || 0
+      };
+    }).filter((c: OptionsContract) => c.strike > 0 && c.expiry);
+
+    // Aggregate data for charts
+    const strikes = Array.from(new Set(contracts.map(c => c.strike))).sort((a, b) => a - b);
+    const expiries = Array.from(new Set(contracts.map(c => c.expiry))).sort();
+    
+    // Use plain objects for JSON serialization (Maps don't serialize properly)
+    const callOIByStrike: Record<number, number> = {};
+    const putOIByStrike: Record<number, number> = {};
+    const gammaByStrike: Record<number, number> = {};
+    const ivByExpiry: Record<string, number> = {};
+
+    // Aggregate OI and gamma by strike
+    contracts.forEach(c => {
+      if (c.type === 'call') {
+        callOIByStrike[c.strike] = (callOIByStrike[c.strike] || 0) + c.openInterest;
+      } else {
+        putOIByStrike[c.strike] = (putOIByStrike[c.strike] || 0) + c.openInterest;
+      }
+      // Gamma exposure = OI × gamma × 100 (contract multiplier)
+      const gammaExposure = c.openInterest * c.gamma * 100;
+      gammaByStrike[c.strike] = (gammaByStrike[c.strike] || 0) + gammaExposure;
+    });
+
+    // Average IV by expiry (for term structure)
+    const ivSumByExpiry: Record<string, { sum: number; count: number }> = {};
+    contracts.forEach(c => {
+      if (c.impliedVolatility > 0) {
+        const existing = ivSumByExpiry[c.expiry] || { sum: 0, count: 0 };
+        ivSumByExpiry[c.expiry] = { 
+          sum: existing.sum + c.impliedVolatility, 
+          count: existing.count + 1 
+        };
+      }
+    });
+    Object.entries(ivSumByExpiry).forEach(([k, v]) => {
+      ivByExpiry[k] = v.sum / v.count;
+    });
+
+    const chainData: OptionsChainData = {
+      ticker,
+      spotPrice,
+      fetchedAt: new Date().toISOString(),
+      isDelayed: true, // Polygon Starter is 15-min delayed
+      contracts,
+      strikes,
+      expiries,
+      callOIByStrike,
+      putOIByStrike,
+      gammaByStrike,
+      ivByExpiry
+    };
+
+    // Cache the result
+    optionsChainCache.set(ticker, { data: chainData, timestamp: Date.now() });
+    console.error(`[Polygon] Cached options chain for ${ticker} with ${contracts.length} contracts`);
+
+    return chainData;
+  } catch (error) {
+    console.error("[Polygon] Error fetching options chain:", error);
+    return null;
+  }
+}
+
+// Helper to get IV smile data (IV by strike for a single expiry)
+export function getIVSmileData(chainData: OptionsChainData, expiry?: string): { strike: number; callIV: number; putIV: number }[] {
+  const targetExpiry = expiry || chainData.expiries[0]; // Default to nearest expiry
+  if (!targetExpiry) return [];
+
+  const smileData = new Map<number, { callIV: number; putIV: number }>();
+  
+  chainData.contracts
+    .filter(c => c.expiry === targetExpiry && c.impliedVolatility > 0)
+    .forEach(c => {
+      const existing = smileData.get(c.strike) || { callIV: 0, putIV: 0 };
+      if (c.type === 'call') {
+        existing.callIV = c.impliedVolatility;
+      } else {
+        existing.putIV = c.impliedVolatility;
+      }
+      smileData.set(c.strike, existing);
+    });
+
+  return Array.from(smileData.entries())
+    .map(([strike, ivs]) => ({ strike, ...ivs }))
+    .sort((a, b) => a.strike - b.strike);
+}
+
+// Helper to get IV term structure (ATM IV by expiry)
+export function getIVTermStructure(chainData: OptionsChainData): { expiry: string; iv: number; daysToExpiry: number }[] {
+  const now = new Date();
+  
+  return Object.entries(chainData.ivByExpiry)
+    .map(([expiry, iv]) => {
+      const expiryDate = new Date(expiry);
+      const daysToExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return { expiry, iv, daysToExpiry };
+    })
+    .filter(d => d.daysToExpiry > 0)
+    .sort((a, b) => a.daysToExpiry - b.daysToExpiry);
+}
+
 // Mock data generators removed - all data must come from real APIs

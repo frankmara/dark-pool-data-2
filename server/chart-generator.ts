@@ -13,13 +13,16 @@ export function calculateFlowLabel(bullishCells: number, bearishCells: number): 
   return 'Mixed sentiment across strikes';
 }
 
-// Calculate dealer gamma label using same logic as chart-generator (lines 972-973)
-export function calculateDealerGammaLabel(totalNetGamma: number): { label: ChartMetadata['dealerGammaLabel']; position: ChartMetadata['dealerGammaPosition'] } {
+// Calculate modeled gamma label (15-min delayed structural data from Polygon)
+export function calculateModeledGammaLabel(totalNetGamma: number): { label: ChartMetadata['dealerGammaLabel']; position: ChartMetadata['dealerGammaPosition'] } {
   if (totalNetGamma > 0) {
     return { label: 'long gamma - expect mean reversion', position: 'long' };
   }
   return { label: 'short gamma - amplified moves likely', position: 'short' };
 }
+
+// Legacy alias for backward compatibility
+export const calculateDealerGammaLabel = calculateModeledGammaLabel;
 
 // Calculate skew label using same logic as volatility smile chart (line 464)
 export function calculateSkewLabel(putIV: number, callIV: number): string {

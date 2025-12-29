@@ -1,0 +1,173 @@
+Perfect — here is the clean, executable game plan plus a drop-in system prompt for Replit that reflects exactly what data you now have:
+
+✅ Unusual Whales API (real-time intent / alerts)
+
+✅ Polygon Options Starter (15-min delayed structure: greeks, IV, OI)
+
+This avoids overclaiming, preserves trust, and is growth-optimized.
+
+THE GAME PLAN (HIGH-LEVEL, NO BS)
+Core positioning (this matters more than data)
+
+You are not “showing the full options market.”
+
+You are:
+
+Explaining real-time institutional intent using structural market context.
+
+That framing is defensible, scalable, and powerful.
+
+DATA LAYERS (LOCK THESE IN)
+Layer 1 — REAL-TIME INTENT (Unusual Whales)
+
+Use for:
+
+Dark pool prints
+
+Sweep alerts
+
+Directional sentiment
+
+Premium size & timing
+
+Repeat strike detection
+
+What it answers:
+👉 “What just happened?”
+
+Layer 2 — STRUCTURAL TERRAIN (Polygon Starter, 15-min delayed)
+
+Use for:
+
+IV by strike / expiry (smile & term structure)
+
+Open interest by strike
+
+Modeled gamma exposure (OI × gamma)
+
+Call/put concentration
+
+What it answers:
+👉 “Where does this flow land?”
+
+CHARTS YOU ARE ALLOWED TO SHOW (IMPORTANT)
+✅ Allowed (Polygon Starter)
+
+Modeled Gamma Exposure by Strike
+
+Put / Call Open Interest Ladder
+
+IV Term Structure
+
+Volatility Smile
+
+❌ Not allowed (do NOT fake)
+
+Options flow heatmaps (strike × expiry daily premium)
+
+Dealer positioning claims
+
+Intraday OI change charts
+
+“Market-wide” volume claims
+
+LANGUAGE RULES (NON-NEGOTIABLE)
+
+You must say:
+
+“Modeled”
+
+“Estimated”
+
+“Structural”
+
+“Delayed”
+
+You must NOT say:
+
+“Dealers are short gamma”
+
+“Market makers must hedge”
+
+“Heavy flow at every strike”
+
+This is how you avoid getting called out.
+
+THREAD STRUCTURE (FINALIZED)
+
+Every thread follows this order:
+
+Hook – Why this flow matters now
+
+Alert – What Unusual Whales detected
+
+Concept – Teach ONE idea (gamma, IV, hedging, etc.)
+
+Structure – Polygon chart explains terrain
+
+Alignment / Conflict – Does flow match structure?
+
+Implication – What this biases, not trades
+
+Watch / Invalidate – What confirms or breaks the read
+
+Takeaway – Save-worthy mental model
+
+🔥 DROP-IN PROMPT FOR REPLIT (USE THIS)
+
+SYSTEM PROMPT — DARK POOL / OPTIONS THREAD ENGINE
+
+You are an institutional-style market analyst focused on education, credibility, and growth.
+
+Data available to you:
+
+Real-time Unusual Whales alerts (flow events, sentiment, premium, strike, expiry)
+
+Polygon Options Starter (15-minute delayed options chain data: greeks, IV, open interest)
+
+You MUST follow these rules:
+
+Treat Unusual Whales data as real-time intent, not full market coverage.
+
+Treat Polygon data as structural context, clearly labeled as delayed or modeled.
+
+NEVER claim dealer positioning or full-market flow.
+
+NEVER generate options flow heatmaps.
+
+Gamma charts must be labeled “Modeled Gamma Exposure”, not dealer gamma.
+
+Thread requirements:
+
+6–8 tweets maximum
+
+Each tweet teaches ONE idea
+
+Charts support the narrative — they do not replace it
+
+Always include a “Watch / Confirm / Invalidate” section
+
+End with a reusable mental model
+
+Tone & style:
+
+Clear, confident, neutral
+
+Fewer numbers, more meaning
+
+Write for smart traders who want to learn, not gamble
+
+Final validation check:
+If removing the charts makes the thread meaningless, rewrite it.
+
+Your goal is to build long-term trust and grow to Unusual Whales-level scale without overclaiming data.
+
+WHAT THIS SETS YOU UP FOR
+
+Immediate launch (no waiting)
+
+Zero credibility risk
+
+Clean upgrade path to Polygon Advanced later
+
+Educational differentiation (most accounts fake this

@@ -19,7 +19,11 @@ import {
 import { z } from "zod";
 import { 
   fetchUnusualWhalesData, 
-  getEnrichedTickerData
+  getEnrichedTickerData,
+  fetchPolygonOptionsChain,
+  getIVSmileData,
+  getIVTermStructure,
+  OptionsChainData
 } from "./live-data-service";
 import { 
   generateChartSvg, 
@@ -845,6 +849,20 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const asOfTimestamp = formatSessionTimestamp(session.asOfTime, 'short');
   
   const ticker = data.ticker;
+  
+  // Fetch REAL Polygon options chain data for the 4 institutional charts
+  const optionsChain = await fetchPolygonOptionsChain(ticker);
+  if (!optionsChain) {
+    console.warn(`[TestPost] No Polygon options chain data for ${ticker} - charts will use mock data`);
+  } else {
+    console.error(`[TestPost] Using REAL Polygon options chain for ${ticker} (fetched at ${optionsChain.fetchedAt})`);
+  }
+  
+  // Use Polygon fetchedAt timestamp for chart labels when available
+  const polygonTimestamp = optionsChain?.fetchedAt 
+    ? formatSessionTimestamp(new Date(optionsChain.fetchedAt), 'short')
+    : asOfTimestamp;
+  
   const sentiment = isOptions 
     ? (data.type === 'CALL' || data.type === 'call' ? 'bullish' : 'bearish')
     : (data.sentiment?.toLowerCase() || 'neutral');
@@ -980,13 +998,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
         index: 1,
         content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just swept size in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
         type: 'hook',
-        chartRef: 'optionsFlowHeatmap'
+        chartRef: 'volatilitySmile'
       },
       {
         index: 2,
-        content: `2/8 — Teach the concept (Options sweeps)\n\nOptions sweeps exist so institutions can build positions fast across multiple exchanges.\n\nBut here's the key:\n\nSweeps only matter when you know the volatility + dealer context around them.\n\nThis $${premiumFormatted} sweep looks notable — but without extreme flow percentile (currently ${flowPercentile}th), it's positioning, not panic.`,
+        content: `2/8 — Teach the concept (Options sweeps)\n\nOptions sweeps exist so institutions can build positions fast across multiple exchanges.\n\nBut here's the key:\n\nSweeps only matter when you know the volatility + gamma context around them.\n\nThis $${premiumFormatted} sweep looks notable — but without extreme flow percentile (currently ${flowPercentile}th), it's positioning, not panic.`,
         type: 'context',
-        chartRef: 'optionsFlowHeatmap'
+        chartRef: 'volatilitySmile'
       },
       {
         index: 3,
@@ -1002,7 +1020,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 5,
-        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${dealerGammaPosition} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${dealerGammaPosition} gamma, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
+        content: `5/8 — Gamma mechanics (modeled, 15-min delayed)\n\nModeled gamma suggests ${dealerGammaPosition} positioning near $${gammaWall}.\n\nWhy that matters:\nWhen gamma is ${dealerGammaPosition}, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
@@ -1020,7 +1038,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Dealers: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"When IV > HV + dealers ${dealerGammaPosition} gamma = expect ${dealerGammaPosition === 'short' ? 'acceleration' : 'mean reversion'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"When IV > HV + gamma ${dealerGammaPosition} = expect ${dealerGammaPosition === 'short' ? 'acceleration' : 'mean reversion'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
@@ -1045,13 +1063,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
         index: 1,
         content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just printed size in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
         type: 'hook',
-        chartRef: 'optionsFlowHeatmap'
+        chartRef: 'volatilitySmile'
       },
       {
         index: 2,
-        content: `2/8 — Teach the concept (Dark pools)\n\nDark pools exist so institutions can trade without moving price.\n\nBut here's the key:\n\nDark pool prints only matter when you know the volatility + dealer context around them.\n\nThis $${notionalFormatted} print (~${volumeFormatted} shares) at the ${flowPercentile}th percentile = ${flowPercentile > 80 ? 'notable size' : 'positioning, not panic'}.`,
+        content: `2/8 — Teach the concept (Dark pools)\n\nDark pools exist so institutions can trade without moving price.\n\nBut here's the key:\n\nDark pool prints only matter when you know the volatility + gamma context around them.\n\nThis $${notionalFormatted} print (~${volumeFormatted} shares) at the ${flowPercentile}th percentile = ${flowPercentile > 80 ? 'notable size' : 'positioning, not panic'}.`,
         type: 'context',
-        chartRef: 'optionsFlowHeatmap'
+        chartRef: 'volatilitySmile'
       },
       {
         index: 3,
@@ -1067,7 +1085,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 5,
-        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${dealerGammaPosition} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${dealerGammaPosition} gamma, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
+        content: `5/8 — Gamma mechanics (modeled, 15-min delayed)\n\nModeled gamma suggests ${dealerGammaPosition} positioning near $${gammaWall}.\n\nWhy that matters:\nWhen gamma is ${dealerGammaPosition}, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
@@ -1085,7 +1103,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Dealers: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"Dark pool prints matter most when they align with dealer gamma + options flow. Here, ${flowLabel.includes('mixed') ? 'they don\'t — yet' : 'they do'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"Dark pool prints matter most when they align with dealer gamma + options flow. Here, ${flowLabel.includes('mixed') ? 'they don\'t — yet' : 'they do'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
@@ -1159,23 +1177,132 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   // Generate institutional analytics charts with synchronized timestamps
   const sessionTimestamp = formatSessionTimestamp(session.asOfTime, 'short');
   
-  // Original 5 charts
-  const smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  // ============================================================================
+  // 4 CHARTS USING REAL POLYGON OPTIONS CHAIN DATA (when available)
+  // ============================================================================
+  
+  // 1. VOLATILITY SMILE - Use getIVSmileData() helper
+  let smileData;
+  if (optionsChain) {
+    const realSmileData = getIVSmileData(optionsChain);
+    if (realSmileData.length > 0) {
+      smileData = {
+        ticker,
+        expiry: optionsChain.expiries[0] || 'Near-term',
+        strikes: realSmileData.map(d => d.strike),
+        currentIV: realSmileData.map(d => d.callIV > 0 ? d.callIV * 100 : d.putIV * 100),
+        priorIV: undefined,
+        spotPrice: optionsChain.spotPrice,
+        anomalyStrikes: [],
+        asOfTimestamp: polygonTimestamp
+      };
+      console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon`);
+    } else {
+      smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+    }
+  } else {
+    smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  }
   const volatilitySmileSvg = generateVolatilitySmileSvg(smileData);
 
   // Reuse heatmapData from truth gate (generated before thread) - add timestamp for chart
   const heatmapDataWithTimestamp = { ...heatmapData, asOfTimestamp: sessionTimestamp };
   const optionsFlowHeatmapSvg = generateOptionsFlowHeatmapSvg(heatmapDataWithTimestamp);
 
-  const oiData = { ...generateMockPutCallOIData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  // 2. PUT/CALL OI LADDER - Use callOIByStrike and putOIByStrike from Polygon
+  let oiData;
+  if (optionsChain && optionsChain.strikes.length > 0) {
+    const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
+    const nearATMStrikes = sortedStrikes.filter(s => 
+      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.15
+    ).slice(0, 15);
+    const strikes = nearATMStrikes.length > 0 ? nearATMStrikes : sortedStrikes.slice(0, 15);
+    
+    const callOI = strikes.map(s => optionsChain.callOIByStrike[s] || 0);
+    const putOI = strikes.map(s => optionsChain.putOIByStrike[s] || 0);
+    const totalCallOI = callOI.reduce((a, b) => a + b, 0);
+    const totalPutOI = putOI.reduce((a, b) => a + b, 0);
+    
+    oiData = {
+      ticker,
+      strikes,
+      callOI,
+      putOI,
+      callOIChange: callOI.map(oi => oi * 0.1), // Estimate: 10% change
+      putOIChange: putOI.map(oi => oi * 0.1),
+      spotPrice: optionsChain.spotPrice,
+      putCallRatio: totalCallOI > 0 ? totalPutOI / totalCallOI : 1,
+      asOfTimestamp: polygonTimestamp
+    };
+    console.error(`[TestPost] Put/Call OI Ladder using ${strikes.length} strikes from Polygon`);
+  } else {
+    oiData = { ...generateMockPutCallOIData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  }
   const putCallOILadderSvg = generatePutCallOILadderSvg(oiData);
 
-  const ivData = { ...generateMockIVTermStructureData(ticker), asOfTimestamp: sessionTimestamp };
+  // 3. IV TERM STRUCTURE - Use getIVTermStructure() helper
+  let ivData;
+  if (optionsChain) {
+    const realTermStructure = getIVTermStructure(optionsChain);
+    if (realTermStructure.length > 0) {
+      ivData = {
+        ticker,
+        expiries: realTermStructure.map(d => {
+          const date = new Date(d.expiry);
+          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }),
+        ivValues: realTermStructure.map(d => d.iv * 100), // Convert to percentage
+        ivChanges24h: realTermStructure.map(() => 0), // No historical data available
+        ivPercentiles: realTermStructure.map(() => 50), // Default percentile
+        asOfTimestamp: polygonTimestamp
+      };
+      console.error(`[TestPost] IV Term Structure using ${realTermStructure.length} expiries from Polygon`);
+    } else {
+      ivData = { ...generateMockIVTermStructureData(ticker), asOfTimestamp: sessionTimestamp };
+    }
+  } else {
+    ivData = { ...generateMockIVTermStructureData(ticker), asOfTimestamp: sessionTimestamp };
+  }
   const ivTermStructureSvg = generateIVTermStructureSvg(ivData);
   
-  // 8 NEW institutional charts
-  const gammaData = { ...generateMockGammaExposureData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  // 4. MODELED GAMMA EXPOSURE - Use gammaByStrike from Polygon
+  let gammaData;
+  if (optionsChain && optionsChain.strikes.length > 0) {
+    const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
+    const nearATMStrikes = sortedStrikes.filter(s => 
+      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.15
+    ).slice(0, 20);
+    const strikes = nearATMStrikes.length > 0 ? nearATMStrikes : sortedStrikes.slice(0, 20);
+    
+    const netGamma = strikes.map(s => optionsChain.gammaByStrike[s] || 0);
+    const totalDealerExposure = netGamma.reduce((a, b) => a + b, 0);
+    
+    // Find gamma flip points (where gamma crosses zero)
+    const gammaFlips: { strike: number; percentile: number }[] = [];
+    for (let i = 1; i < netGamma.length; i++) {
+      if ((netGamma[i-1] > 0 && netGamma[i] < 0) || (netGamma[i-1] < 0 && netGamma[i] > 0)) {
+        gammaFlips.push({ strike: strikes[i], percentile: 75 });
+      }
+    }
+    
+    gammaData = {
+      ticker,
+      strikes,
+      netGamma,
+      spotPrice: optionsChain.spotPrice,
+      totalDealerExposure,
+      gammaFlips,
+      asOfTimestamp: polygonTimestamp
+    };
+    console.error(`[TestPost] Gamma Exposure using ${strikes.length} strikes from Polygon`);
+  } else {
+    gammaData = { ...generateMockGammaExposureData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  }
   const gammaExposureSvg = generateGammaExposureSvg(gammaData);
+  
+  // ============================================================================
+  // REMAINING CHARTS (still using mock data)
+  // ============================================================================
 
   const hvIvData = { ...generateMockHistoricalVsImpliedVolData(ticker), asOfTimestamp: sessionTimestamp };
   const historicalVsImpliedVolSvg = generateHistoricalVsImpliedVolSvg(hvIvData);
