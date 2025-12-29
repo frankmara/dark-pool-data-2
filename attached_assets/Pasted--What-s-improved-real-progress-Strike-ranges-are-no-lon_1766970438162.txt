@@ -1,0 +1,206 @@
+✅ What’s improved (real progress)
+
+Strike ranges are no longer obviously from the wrong underlying (your OI ladder now shows $80–$220 instead of $19–$29 from the prior version). 
+
+Dark Pool Insights - Replit v2
+
+You renamed gamma to “Modeled Gamma Exposure (modeled, 15-min delayed)” — that’s the right direction. 
+
+Dark Pool Insights - Replit v2
+
+You added a Watch/Confirm/Invalidate section — huge for engagement + returning readers. 
+
+Dark Pool Insights - Replit v2
+
+Correlation matrix now uses real peers (NIO/RIVN/LCID/F/GM). 
+
+Dark Pool Insights - Replit v2
+
+🔴 Critical errors (must fix)
+1) “Bearish OI elevated” is not what your graphic is showing
+
+Tweet 1 says: “Bearish OI elevated.” 
+
+Dark Pool Insights - Replit v2
+
+
+But the chart shown is titled “TSLA IV Surface Map – Positioning by Strike/Expiry (15-min delayed)” and the legend says circle size = premium volume and even calls it “Options Flow Heatmap”. 
+
+Dark Pool Insights - Replit v2
+
+That is not OI. It’s either:
+
+premium/flow aggregation, or
+
+some synthetic “positioning” metric
+
+Fix: either:
+
+change copy to “bearish premium concentration/flow elevated” OR
+
+change chart to an actual OI surface (OI by strike/expiry) and label circle size = OI.
+
+Right now it’s mislabeled/misinterpreted.
+
+2) Gamma is internally inconsistent + strike grid is broken
+
+Your gamma chart shows strikes $80–$255 and says “Long gamma near $250 – expect mean reversion” with NET GAMMA +$98 LONG. 
+
+Dark Pool Insights - Replit v2
+
+
+But tweet 5 says: “Modeled gamma suggests short positioning near $484.” 
+
+Dark Pool Insights - Replit v2
+
+Three problems:
+
+The chart is talking about $250 (and net long)
+
+The copy claims short and references $484
+
+TSLA spot is ~$474, so a $80–$255 grid is nonsensical for TSLA options (those are deep ITM puts/deep OTM calls in a way that’s not typical to headline)
+
+Fix:
+
+Gamma strike grid must be centered around spot: e.g. $350–$600 (or similar).
+
+Copy must match the chart sign: if net gamma is positive, don’t say short.
+
+Remove the $484 reference unless it exists in the chart output.
+
+This is still a major credibility breaker.
+
+3) Put/Call OI ratio is mathematically suspect (50.75)
+
+Your Put/Call OI Delta ladder shows P/C RATIO 50.75 (BEARISH EXTREME). 
+
+Dark Pool Insights - Replit v2
+
+A 50+ P/C ratio is extraordinarily unlikely for TSLA unless:
+
+calls are near-zero (bad ingest), or
+
+you’re dividing by tiny/filtered call OI, or
+
+you’re using OI changes (delta) with sign issues, and then taking an absolute value, or
+
+chain is incomplete (only certain strikes populated)
+
+Fix: Add hard sanity checks:
+
+If call_total < threshold OR put_total < threshold → show “Insufficient coverage” instead of ratio.
+
+Compute ratio from total OI (not ΔOI) unless you have reliable historic snapshots.
+
+If this is ΔOI, label it ΔOI Put/Call Ratio, not P/C ratio.
+
+4) “Max pain sits near $469” is false vs your own max pain chart
+
+Tweet 7 says: “Max pain sits near $469”. 
+
+Dark Pool Insights - Replit v2
+
+
+But the Max Pain chart shows MAX PAIN $510 and interpretation says “Max pain $35 above spot.” 
+
+Dark Pool Insights - Replit v2
+
+This is a direct contradiction.
+
+Fix: Pull max pain from the same variable used to render the chart and reuse it in the copy (single source of truth).
+
+5) “Options volume is elevated (230% of stock ADV)” contradicts your own chart interpretation
+
+Tweet 6 claims 230% of stock ADV. 
+
+Dark Pool Insights - Replit v2
+
+
+But the Options vs Stock Volume chart interpretation says: “Normal options/equity relationship.” 
+
+Dark Pool Insights - Replit v2
+
+Both can’t be true in the same post.
+
+Fix: Make your text reference the chart interpretation programmatically:
+
+If ADV ratio > X → “elevated”
+
+else → “normal”
+
+🟠 Major trust leaks / unclear labeling (should fix)
+6) You still call it “Options Flow Heatmap” while saying “15-min delayed positioning”
+
+That surface map can’t be both:
+
+“flow heatmap (premium concentration)” and
+
+“positioning” and
+
+“OI”
+
+Pick one and label accurately. 
+
+Dark Pool Insights - Replit v2
+
+Recommendation: If it’s Polygon chain snapshot, call it:
+“IV Surface / Chain Snapshot (15-min delayed)”
+If it’s UW aggregation, call it:
+“Alert Concentration Map (UW)”
+
+7) Tweet 4 is truncated in the rendered view
+
+Tweet 4 ends at “Right now:” on the preview screen. 
+
+Dark Pool Insights - Replit v2
+
+
+The “IV > HV by ~14 points” appears on the next page. 
+
+Dark Pool Insights - Replit v2
+
+Fix: Ensure tweet body includes the full statement before rendering (no line splitting across pages).
+
+8) Percentile grammar + consistency
+
+You have “82th percentile”, “91th percentile”. 
+
+Dark Pool Insights - Replit v2
+
+
+Should be 82nd, 91st.
+
+Minor, but on finance Twitter it signals sloppiness.
+
+The 6 fixes to implement next (in priority order)
+
+Fix gamma strike grid around spot + ensure copy matches sign (long vs short). 
+
+Dark Pool Insights - Replit v2
+
+Stop calling premium “OI” (surface map labeling/copy mismatch). 
+
+Dark Pool Insights - Replit v2
+
+Max pain value must match chart (469 vs 510). 
+
+Dark Pool Insights - Replit v2
+
+ADV ratio claim must match volume chart interpretation (230% vs “normal”). 
+
+Dark Pool Insights - Replit v2
+
+P/C ratio sanity checks (50.75 likely a computation/coverage issue). 
+
+Dark Pool Insights - Replit v2
+
+Tweet rendering completeness + ordinal suffixes. 
+
+Dark Pool Insights - Replit v2
+
+Bottom line
+
+Yes, better — but you still have 3 direct contradictions (gamma, max pain, volume) and 1 major mislabeling (“OI” vs premium/flow). Until those are fixed, the account will keep leaking trust even if the graphics look elite.
+
+If you paste the exact Polygon endpoints + how you construct the option symbol universe for TSLA, I can tell you exactly why the gamma/OI strike grids are coming out wrong (it’s almost always a filtering/join issue).

@@ -1,4 +1,23 @@
 // TRUTH GATE HELPERS: Export these to ensure thread text matches chart labels exactly
+
+// Ordinal suffix helper for percentiles (82 → "82nd", 91 → "91st", 3 → "3rd", etc.)
+export function getOrdinalSuffix(n: number): string {
+  const lastDigit = n % 10;
+  const lastTwoDigits = n % 100;
+  
+  // Handle special cases for 11th, 12th, 13th
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 13) {
+    return `${n}th`;
+  }
+  
+  switch (lastDigit) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
 export interface ChartMetadata {
   flowLabel: 'Bullish positioning dominant' | 'Bearish OI elevated' | 'Mixed sentiment across strikes';
   modeledGammaLabel: 'long gamma - expect mean reversion' | 'short gamma - amplified moves likely';
@@ -590,10 +609,10 @@ export function generateIVSurfaceMapSvg(data: IVSurfaceMapData): string {
   svg += `<text x="${width - 42}" y="30" fill="#8B5CF6" font-size="8" font-family="sans-serif">Mixed</text>`;
   svg += `<text x="${width - 165}" y="42" fill="#6b7280" font-size="7" font-family="sans-serif">Circle size = premium volume</text>`;
   
-  // Calculate dominant flow for interpretation
+  // Calculate dominant premium concentration for interpretation (NOT flow - this is premium volume, not trade flow)
   const bullishCount = data.cells.filter(c => c.sentiment === 'bullish').length;
   const bearishCount = data.cells.filter(c => c.sentiment === 'bearish').length;
-  const dominantFlow = bullishCount > bearishCount * 1.5 ? 'Bullish positioning dominant' : bearishCount > bullishCount * 1.5 ? 'Bearish flow elevated' : 'Mixed sentiment across strikes';
+  const dominantFlow = bullishCount > bearishCount * 1.5 ? 'Bullish premium concentration dominant' : bearishCount > bullishCount * 1.5 ? 'Bearish premium concentration elevated' : 'Mixed premium across strikes';
   
   // Interpretation annotation
   svg += `<rect x="${padding.left}" y="${height - 45}" width="280" height="20" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
@@ -666,8 +685,9 @@ export function generatePutCallOILadderSvg(data: PutCallOIData): string {
   const gaugeX = width - 80;
   const gaugeY = padding.top + 40;
   
-  // Handle null P/C ratio (insufficient data)
-  const hasValidRatio = data.putCallRatio !== null && !isNaN(data.putCallRatio);
+  // Handle null P/C ratio (insufficient data) with sanity check for unrealistic values
+  // A P/C ratio > 10 is almost certainly a data coverage/calculation issue, not a real signal
+  const hasValidRatio = data.putCallRatio !== null && !isNaN(data.putCallRatio) && data.putCallRatio < 10 && data.putCallRatio > 0.1;
   const ratioValue = hasValidRatio ? data.putCallRatio! : 0;
   const isExtreme = hasValidRatio && (ratioValue > 3 || ratioValue < 0.33);
   const gaugeColor = !hasValidRatio ? '#6b7280' : isExtreme ? '#EF4444' : '#6b7280';
@@ -735,7 +755,7 @@ export function generateIVTermStructureSvg(data: IVTermStructureData): string {
     svg += `<text x="${x}" y="${y - 5}" text-anchor="middle" fill="#ffffff" font-size="9" font-family="monospace">${data.ivValues[i].toFixed(0)}%</text>`;
 
     if (isUnusual) {
-      svg += `<text x="${x}" y="${y - 18}" text-anchor="middle" fill="#EF4444" font-size="8" font-weight="bold" font-family="sans-serif">${data.ivPercentiles[i]}th</text>`;
+      svg += `<text x="${x}" y="${y - 18}" text-anchor="middle" fill="#EF4444" font-size="8" font-weight="bold" font-family="sans-serif">${getOrdinalSuffix(data.ivPercentiles[i])}</text>`;
     }
   });
 
@@ -1008,7 +1028,7 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
     if (idx >= 0) {
       const x = padding.left + (idx / data.strikes.length) * chartWidth + barWidth / 2;
       svg += `<polygon points="${x},${padding.top + 25} ${x-6},${padding.top + 35} ${x+6},${padding.top + 35}" fill="#8B5CF6"/>`;
-      svg += `<text x="${x}" y="${padding.top + 50}" text-anchor="middle" fill="#8B5CF6" font-size="8" font-weight="bold" font-family="sans-serif">PIN ${flip.percentile}th</text>`;
+      svg += `<text x="${x}" y="${padding.top + 50}" text-anchor="middle" fill="#8B5CF6" font-size="8" font-weight="bold" font-family="sans-serif">PIN ${getOrdinalSuffix(flip.percentile)}</text>`;
     }
   });
 
@@ -1158,7 +1178,7 @@ export function generateHistoricalVsImpliedVolSvg(data: HistoricalVsImpliedVolDa
   svg += `<rect x="${width - padding.right + 10}" y="${padding.top}" width="80" height="60" fill="#1a1a2e" rx="6" stroke="#374151" stroke-width="1"/>`;
   svg += `<text x="${width - padding.right + 50}" y="${padding.top + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">IV PERCENTILE</text>`;
   const pctColor = data.currentPercentile > 80 ? '#EF4444' : data.currentPercentile < 20 ? '#10B981' : '#F59E0B';
-  svg += `<text x="${width - padding.right + 50}" y="${padding.top + 45}" text-anchor="middle" fill="${pctColor}" font-size="20" font-weight="bold" font-family="monospace">${data.currentPercentile}th</text>`;
+  svg += `<text x="${width - padding.right + 50}" y="${padding.top + 45}" text-anchor="middle" fill="${pctColor}" font-size="20" font-weight="bold" font-family="monospace">${getOrdinalSuffix(data.currentPercentile)}</text>`;
 
   // Legend
   svg += `<rect x="${width - padding.right + 10}" y="${padding.top + 70}" width="80" height="55" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
@@ -1804,7 +1824,7 @@ export function generateIVRankHistogramSvg(data: IVRankHistogramData): string {
   const currentX = padding.left + (data.currentPercentile / 100) * chartWidth;
   svg += `<line x1="${currentX}" y1="${padding.top}" x2="${currentX}" y2="${height - padding.bottom}" stroke="#F59E0B" stroke-width="3"/>`;
   svg += `<rect x="${currentX - 60}" y="${padding.top + 5}" width="120" height="22" fill="#F59E0B" rx="4"/>`;
-  svg += `<text x="${currentX}" y="${padding.top + 20}" text-anchor="middle" fill="#000000" font-size="9" font-weight="bold" font-family="sans-serif">Current: ${data.currentPercentile}th Percentile</text>`;
+  svg += `<text x="${currentX}" y="${padding.top + 20}" text-anchor="middle" fill="#000000" font-size="9" font-weight="bold" font-family="sans-serif">Current: ${getOrdinalSuffix(data.currentPercentile)} Percentile</text>`;
 
   // Current IV value
   svg += `<text x="${currentX}" y="${padding.top + 40}" text-anchor="middle" fill="#F59E0B" font-size="11" font-weight="bold" font-family="monospace">IV: ${data.currentIV.toFixed(1)}%</text>`;
