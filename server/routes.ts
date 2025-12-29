@@ -58,7 +58,8 @@ import {
   generateMockOptionsStockVolumeData,
   // Truth gate helpers for chart-text consistency
   calculateFlowLabel,
-  calculateModeledGammaLabel
+  calculateModeledGammaLabel,
+  getOrdinalSuffix
 } from "./chart-generator";
 
 const scannerConfigUpdateSchema = z.object({
@@ -972,8 +973,75 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const hvIvSpread = Math.floor(8 + (flowPercentile * 0.1));
   const hvIvPercentile = Math.min(Math.floor(50 + flowPercentile * 0.4), 95);
   
-  // Options volume ratio to stock ADV
-  const optionsVolumeRatio = Math.floor(100 + flowPercentile * 2);
+  // ============================================================================
+  // SINGLE SOURCE OF TRUTH: Generate chart data FIRST, then extract values for thread text
+  // Uses Polygon live data when available (same logic as chart generation)
+  // This ensures thread text values match chart labels exactly
+  // ============================================================================
+  
+  // Generate max pain data and extract max pain level for thread (mock only - no Polygon integration yet)
+  const maxPainDataForThread = generateMockMaxPainData(ticker, price);
+  const maxPainLevel = maxPainDataForThread.maxPainStrike;
+  
+  // Generate options volume data and extract avg ratio for thread (mock only - no Polygon integration yet)
+  const optVolDataForThread = generateMockOptionsStockVolumeData(ticker);
+  const avgRatio = optVolDataForThread.volumeRatio.reduce((a, b) => a + b, 0) / optVolDataForThread.volumeRatio.length;
+  // Use chart's interpretation logic for consistency
+  const optionsVolumeRatio = Math.floor(avgRatio);
+  const volumeInterpretation = avgRatio > 180 ? 'elevated' : avgRatio < 80 ? 'subdued' : 'normal';
+  
+  // Generate gamma data - USE POLYGON DATA when available (same logic as chart generation)
+  // This ensures thread text matches chart SVG exactly
+  let gammaDataForThread: any;
+  if (optionsChain && optionsChain.strikes.length > 0) {
+    // Use Polygon live data (same logic as chart generation section)
+    const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
+    const nearATMStrikes = sortedStrikes.filter(s => 
+      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.15
+    ).slice(0, 20);
+    const strikes = nearATMStrikes.length > 0 ? nearATMStrikes : sortedStrikes.slice(0, 20);
+    
+    const netGamma = strikes.map(s => optionsChain.gammaByStrike[s] || 0);
+    const totalGammaExposure = netGamma.reduce((a, b) => a + b, 0);
+    
+    // Find gamma flip points (where gamma crosses zero)
+    const gammaFlips: { strike: number; percentile: number }[] = [];
+    for (let i = 1; i < netGamma.length; i++) {
+      if ((netGamma[i-1] > 0 && netGamma[i] < 0) || (netGamma[i-1] < 0 && netGamma[i] > 0)) {
+        gammaFlips.push({ strike: strikes[i], percentile: 75 });
+      }
+    }
+    
+    gammaDataForThread = {
+      ticker,
+      strikes,
+      netGamma,
+      spotPrice: optionsChain.spotPrice,
+      totalGammaExposure,
+      gammaFlips
+    };
+    console.error(`[TestPost] Thread using Polygon gamma data: ${strikes.length} strikes`);
+  } else {
+    // Fallback to mock data
+    gammaDataForThread = generateMockGammaExposureData(ticker, price);
+  }
+  
+  // Find the strike with highest absolute net gamma (this is where gamma "wall" is)
+  let gammaWallStrike = price;
+  let maxAbsGamma = 0;
+  gammaDataForThread.strikes.forEach((strike: number, i: number) => {
+    const absGamma = Math.abs(gammaDataForThread.netGamma[i]);
+    if (absGamma > maxAbsGamma) {
+      maxAbsGamma = absGamma;
+      gammaWallStrike = strike;
+    }
+  });
+  const gammaWall = gammaWallStrike;
+  
+  // GEX flip level: find where gamma crosses zero, or use nearest strike below gamma wall
+  const gexFlip = gammaDataForThread.gammaFlips && gammaDataForThread.gammaFlips.length > 0
+    ? gammaDataForThread.gammaFlips[0].strike
+    : Math.floor(gammaWall * 0.97);
   
   if (isOptions) {
     const premiumFormatted = formatNumber(notionalValue);
@@ -988,9 +1056,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const primaryProb = 55 + Math.floor(unusualityScore * 0.25);
     const tailProb = Math.floor((100 - primaryProb) * 0.3);
     
-    // Gamma wall and flip levels
-    const gammaWall = strike;
-    const gexFlip = Math.floor(strike * 0.97);
+    // NOTE: gammaWall, gexFlip, maxPainLevel now extracted from chart data above (single source of truth)
     
     // MASTER PROMPT STYLE with TRUTH GATES: Educational, Narrative, Viral Thread (8/8 format)
     thread = [
@@ -1002,13 +1068,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 2,
-        content: `2/8 — Teach the concept (Options sweeps)\n\nOptions sweeps exist so institutions can build positions fast across multiple exchanges.\n\nBut here's the key:\n\nSweeps only matter when you know the volatility + gamma context around them.\n\nThis $${premiumFormatted} sweep looks notable — but without extreme flow percentile (currently ${flowPercentile}th), it's positioning, not panic.`,
+        content: `2/8 — Teach the concept (Options sweeps)\n\nOptions sweeps exist so institutions can build positions fast across multiple exchanges.\n\nBut here's the key:\n\nSweeps only matter when you know the volatility + gamma context around them.\n\nThis $${premiumFormatted} sweep looks notable — but without extreme flow percentile (currently ${getOrdinalSuffix(flowPercentile)}), it's positioning, not panic.`,
         type: 'context',
         chartRef: 'volatilitySmile'
       },
       {
         index: 3,
-        content: `3/8 — Introduce tension (Vol layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${ivPercentile}th percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
+        content: `3/8 — Introduce tension (Vol layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${getOrdinalSuffix(ivPercentile)} percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
         type: 'tension',
         chartRef: 'volatilitySmile'
       },
@@ -1026,13 +1092,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 6,
-        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the sweep direction.'}`,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is ${volumeInterpretation} (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the sweep direction.'}`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },
       {
         index: 7,
-        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${strike}, acting as a ${strike > price ? 'magnet above' : 'ceiling at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
+        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${maxPainLevel}, acting as a ${maxPainLevel > price ? 'magnet above' : 'ceiling at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
         type: 'context',
         chartRef: 'maxPain'
       },
@@ -1052,10 +1118,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const dpPrimaryProb = 55 + Math.floor(unusualityScore * 0.25);
     const dpTailProb = Math.floor((100 - dpPrimaryProb) * 0.3);
     
-    // Gamma wall and flip levels for dark pool
-    const gammaWall = Math.floor(price * 1.02);
-    const gexFlip = Math.floor(price * 0.97);
-    const maxPainLevel = Math.floor(price * 0.99);
+    // NOTE: gammaWall, gexFlip, maxPainLevel now extracted from chart data above (single source of truth)
     
     // MASTER PROMPT STYLE with TRUTH GATES for Dark Pool
     thread = [
@@ -1067,13 +1130,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 2,
-        content: `2/8 — Teach the concept (Dark pools)\n\nDark pools exist so institutions can trade without moving price.\n\nBut here's the key:\n\nDark pool prints only matter when you know the volatility + gamma context around them.\n\nThis $${notionalFormatted} print (~${volumeFormatted} shares) at the ${flowPercentile}th percentile = ${flowPercentile > 80 ? 'notable size' : 'positioning, not panic'}.`,
+        content: `2/8 — Teach the concept (Dark pools)\n\nDark pools exist so institutions can trade without moving price.\n\nBut here's the key:\n\nDark pool prints only matter when you know the volatility + gamma context around them.\n\nThis $${notionalFormatted} print (~${volumeFormatted} shares) at the ${getOrdinalSuffix(flowPercentile)} percentile = ${flowPercentile > 80 ? 'notable size' : 'positioning, not panic'}.`,
         type: 'context',
         chartRef: 'volatilitySmile'
       },
       {
         index: 3,
-        content: `3/8 — Introduce tension (Options layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${ivPercentile}th percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
+        content: `3/8 — Introduce tension (Options layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${getOrdinalSuffix(ivPercentile)} percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
         type: 'tension',
         chartRef: 'volatilitySmile'
       },
@@ -1091,7 +1154,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 6,
-        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the dark pool print direction.'}`,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is ${volumeInterpretation} (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the dark pool print direction.'}`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },
@@ -1112,8 +1175,8 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   
   // Generate standalone tweet (condensed version for single post)
   const standaloneTweet = isOptions 
-    ? `Institutional Alert via @unusual_whales: $${ticker} options sweep ($${formatNumber(notionalValue)}, ${flowPercentile}th percentile - meaning unusually large compared to typical activity) hooks into ${skewDirection}-side skew (that's the asymmetry where ${skewDirection === 'put' ? 'protective put' : 'bullish call'} options show higher implied volatility, or IV, indicating more market ${skewDirection === 'put' ? 'worry about price drops' : 'expectation of upside'}). Simply put, IV is the market's guess at future price swings. Narrative: ${sentiment === 'bullish' ? 'Bullish' : sentiment === 'bearish' ? 'Bearish' : 'Neutral'} options flow clustering suggests ${sentiment === 'bullish' ? 'breakout' : 'consolidation'} (${55 + Math.floor(unusualityScore * 0.25)}% probability), with ${conviction.toLowerCase()} conviction from the ${formatNumber(printSize)} contract sweep at $${data.strike || 150} strike. Unusuality: ${unusualityScore}/100. DYOR. #DarkPools [Embedded Summary Card]`
-    : `Institutional Alert via @unusual_whales: $${ticker} dark pool print ($${formatNumber(notionalValue)}, ${flowPercentile}th percentile - meaning unusually large compared to typical activity) hooks into ${skewDirection}-side skew (that's the asymmetry where ${skewDirection === 'put' ? 'protective put' : 'bullish call'} options show higher implied volatility, or IV, indicating more market ${skewDirection === 'put' ? 'worry about price drops' : 'expectation of upside'}). Simply put, IV is the market's guess at future price swings. Narrative: ${sentiment === 'bullish' ? 'Bullish' : sentiment === 'bearish' ? 'Bearish' : 'Neutral'} options flow clustering suggests ${sentiment === 'bullish' ? 'mean reversion' : 'consolidation'} (${55 + Math.floor(unusualityScore * 0.25)}% probability), with ${conviction.toLowerCase()} conviction from the ${formatNumber(printSize)} share block at $${price.toFixed(2)}. Unusuality: ${unusualityScore}/100. DYOR. #DarkPools [Embedded Summary Card]`;
+    ? `Institutional Alert via @unusual_whales: $${ticker} options sweep ($${formatNumber(notionalValue)}, ${getOrdinalSuffix(flowPercentile)} percentile - meaning unusually large compared to typical activity) hooks into ${skewDirection}-side skew (that's the asymmetry where ${skewDirection === 'put' ? 'protective put' : 'bullish call'} options show higher implied volatility, or IV, indicating more market ${skewDirection === 'put' ? 'worry about price drops' : 'expectation of upside'}). Simply put, IV is the market's guess at future price swings. Narrative: ${sentiment === 'bullish' ? 'Bullish' : sentiment === 'bearish' ? 'Bearish' : 'Neutral'} options flow clustering suggests ${sentiment === 'bullish' ? 'breakout' : 'consolidation'} (${55 + Math.floor(unusualityScore * 0.25)}% probability), with ${conviction.toLowerCase()} conviction from the ${formatNumber(printSize)} contract sweep at $${data.strike || 150} strike. Unusuality: ${unusualityScore}/100. DYOR. #DarkPools [Embedded Summary Card]`
+    : `Institutional Alert via @unusual_whales: $${ticker} dark pool print ($${formatNumber(notionalValue)}, ${getOrdinalSuffix(flowPercentile)} percentile - meaning unusually large compared to typical activity) hooks into ${skewDirection}-side skew (that's the asymmetry where ${skewDirection === 'put' ? 'protective put' : 'bullish call'} options show higher implied volatility, or IV, indicating more market ${skewDirection === 'put' ? 'worry about price drops' : 'expectation of upside'}). Simply put, IV is the market's guess at future price swings. Narrative: ${sentiment === 'bullish' ? 'Bullish' : sentiment === 'bearish' ? 'Bearish' : 'Neutral'} options flow clustering suggests ${sentiment === 'bullish' ? 'mean reversion' : 'consolidation'} (${55 + Math.floor(unusualityScore * 0.25)}% probability), with ${conviction.toLowerCase()} conviction from the ${formatNumber(printSize)} share block at $${price.toFixed(2)}. Unusuality: ${unusualityScore}/100. DYOR. #DarkPools [Embedded Summary Card]`;
 
   // Engagement metrics placeholder (would be populated from actual post analytics)
   const engagement = {
@@ -1268,39 +1331,12 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   }
   const ivTermStructureSvg = generateIVTermStructureSvg(ivData);
   
-  // 4. MODELED GAMMA EXPOSURE - Use gammaByStrike from Polygon
-  let gammaData;
-  if (optionsChain && optionsChain.strikes.length > 0) {
-    const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
-    const nearATMStrikes = sortedStrikes.filter(s => 
-      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.15
-    ).slice(0, 20);
-    const strikes = nearATMStrikes.length > 0 ? nearATMStrikes : sortedStrikes.slice(0, 20);
-    
-    const netGamma = strikes.map(s => optionsChain.gammaByStrike[s] || 0);
-    const totalGammaExposure = netGamma.reduce((a, b) => a + b, 0);
-    
-    // Find gamma flip points (where gamma crosses zero)
-    const gammaFlips: { strike: number; percentile: number }[] = [];
-    for (let i = 1; i < netGamma.length; i++) {
-      if ((netGamma[i-1] > 0 && netGamma[i] < 0) || (netGamma[i-1] < 0 && netGamma[i] > 0)) {
-        gammaFlips.push({ strike: strikes[i], percentile: 75 });
-      }
-    }
-    
-    gammaData = {
-      ticker,
-      strikes,
-      netGamma,
-      spotPrice: optionsChain.spotPrice,
-      totalGammaExposure,
-      gammaFlips,
-      asOfTimestamp: polygonTimestamp
-    };
-    console.error(`[TestPost] Gamma Exposure using ${strikes.length} strikes from Polygon`);
-  } else {
-    gammaData = { ...generateMockGammaExposureData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
-  }
+  // 4. MODELED GAMMA EXPOSURE - SINGLE SOURCE OF TRUTH: Reuse gamma data from thread text section
+  // gammaDataForThread was already computed with Polygon awareness (uses Polygon if available, else mock)
+  const gammaData = { 
+    ...gammaDataForThread, 
+    asOfTimestamp: (optionsChain && optionsChain.strikes.length > 0) ? polygonTimestamp : sessionTimestamp 
+  };
   const gammaExposureSvg = generateGammaExposureSvg(gammaData);
   
   // ============================================================================
@@ -1319,13 +1355,15 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const corrData = { ...generateMockSectorCorrelationData(ticker), asOfTimestamp: sessionTimestamp };
   const sectorCorrelationSvg = generateSectorCorrelationSvg(corrData);
 
-  const maxPainData = { ...generateMockMaxPainData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  // SINGLE SOURCE OF TRUTH: Reuse chart data generated earlier for thread text (with timestamp added)
+  const maxPainData = { ...maxPainDataForThread, asOfTimestamp: sessionTimestamp };
   const maxPainSvg = generateMaxPainSvg(maxPainData);
 
   const ivRankData = { ...generateMockIVRankHistogramData(ticker), asOfTimestamp: sessionTimestamp };
   const ivRankHistogramSvg = generateIVRankHistogramSvg(ivRankData);
 
-  const optVolData = { ...generateMockOptionsStockVolumeData(ticker), asOfTimestamp: sessionTimestamp };
+  // SINGLE SOURCE OF TRUTH: Reuse chart data generated earlier for thread text (with timestamp added)
+  const optVolData = { ...optVolDataForThread, asOfTimestamp: sessionTimestamp };
   const optionsStockVolumeSvg = generateOptionsStockVolumeSvg(optVolData);
   
   return {

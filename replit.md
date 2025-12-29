@@ -238,3 +238,13 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
   - Correlation matrix: Uses real sector peer tickers (GLD, GDX, SIL for precious metals, etc.) instead of "PEER1", "PEER2"
   - Default correlation peers: Replaced VIX with XLF (VIX is not a correlation peer)
   - Thread text: "dealer gamma + options flow" → "gamma mechanics + options positioning"
+- **Single Source of Truth Architecture (Dec 29, 2025)**:
+  - Chart data now generated BEFORE thread text to ensure consistency
+  - Thread text extracts key values FROM chart data (maxPainLevel, gammaWall, optionsVolumeRatio)
+  - gammaWall: Extracted from gamma chart's highest absolute net gamma strike
+  - maxPainLevel: Extracted from maxPainData.maxPainStrike (calculated by chart generator)
+  - optionsVolumeRatio: Extracted from avgRatio of volume chart data, uses same thresholds as chart interpretation
+  - volumeInterpretation: "elevated" (>180%), "subdued" (<80%), or "normal" - matches chart INTERPRETATION label
+  - Added getOrdinalSuffix() helper for proper ordinal formatting (82nd, 91st, 3rd, etc.)
+  - P/C ratio sanity check: Rejects ratios > 10 or < 0.1 as unrealistic data
+  - IV Surface Map interpretation: "premium concentration" instead of "flow" (premium volume, not trade flow)
