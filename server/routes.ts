@@ -58,7 +58,7 @@ import {
   generateMockOptionsStockVolumeData,
   // Truth gate helpers for chart-text consistency
   calculateFlowLabel,
-  calculateDealerGammaLabel
+  calculateModeledGammaLabel
 } from "./chart-generator";
 
 const scannerConfigUpdateSchema = z.object({
@@ -923,14 +923,14 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const chartBearishCount = heatmapData.cells.filter(c => c.sentiment === 'bearish').length;
   const flowLabel = calculateFlowLabel(chartBullishCount, chartBearishCount);
   
-  // Dealer gamma: Derived from real options data (short gamma is market default ~70% of time)
-  // When flowPercentile is high + bullish, dealers may be long; otherwise short
+  // Modeled gamma: Derived from real options data (short gamma is market default ~70% of time)
+  // When flowPercentile is high + bullish, modeled gamma may be long; otherwise short
   const totalNetGamma = sentiment === 'bullish' && flowPercentile >= 85 
-    ? gammaValue * 1000  // Very strong bullish API data = dealers may be long
-    : -gammaValue * 500; // Default: dealers are typically short gamma
+    ? gammaValue * 1000  // Very strong bullish API data = may be long gamma
+    : -gammaValue * 500; // Default: typically short gamma environment
   
   // Use helper function for consistent labeling
-  const { label: dealerGammaLabel, position: dealerGammaPosition } = calculateDealerGammaLabel(totalNetGamma);
+  const { label: modeledGammaLabel, position: modeledGammaPosition } = calculateModeledGammaLabel(totalNetGamma);
   
   // Conviction label: Only claim conviction when API data shows strong signal
   const convictionLabel = flowPercentile >= 85 
@@ -1020,7 +1020,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 5,
-        content: `5/8 — Gamma mechanics (modeled, 15-min delayed)\n\nModeled gamma suggests ${dealerGammaPosition} positioning near $${gammaWall}.\n\nWhy that matters:\nWhen gamma is ${dealerGammaPosition}, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
+        content: `5/8 — Gamma mechanics (modeled, 15-min delayed)\n\nModeled gamma suggests ${modeledGammaPosition} positioning near $${gammaWall}.\n\nWhy that matters:\nWhen gamma is ${modeledGammaPosition}, price moves tend to ${modeledGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${modeledGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
@@ -1032,13 +1032,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 7,
-        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${strike}, acting as a ${strike > price ? 'magnet above' : 'ceiling at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${dealerGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
+        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${strike}, acting as a ${strike > price ? 'magnet above' : 'ceiling at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
         type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"When IV > HV + gamma ${dealerGammaPosition} = expect ${dealerGammaPosition === 'short' ? 'acceleration' : 'mean reversion'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${modeledGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"When IV > HV + gamma ${modeledGammaPosition} = expect ${modeledGammaPosition === 'short' ? 'acceleration' : 'mean reversion'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
@@ -1085,7 +1085,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 5,
-        content: `5/8 — Gamma mechanics (modeled, 15-min delayed)\n\nModeled gamma suggests ${dealerGammaPosition} positioning near $${gammaWall}.\n\nWhy that matters:\nWhen gamma is ${dealerGammaPosition}, price moves tend to ${dealerGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${dealerGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
+        content: `5/8 — Gamma mechanics (modeled, 15-min delayed)\n\nModeled gamma suggests ${modeledGammaPosition} positioning near $${gammaWall}.\n\nWhy that matters:\nWhen gamma is ${modeledGammaPosition}, price moves tend to ${modeledGammaPosition === 'short' ? 'accelerate' : 'stabilize'}.\n\n${modeledGammaPosition === 'short' ? 'But here\'s the catch: without directional flow, this becomes chop, not trend.' : 'Mean reversion is more likely until a catalyst breaks the range.'}`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
@@ -1097,13 +1097,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 7,
-        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${maxPainLevel}, acting as ${maxPainLevel > price ? 'a magnet above' : 'an anchor at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${dealerGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
+        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${maxPainLevel}, acting as ${maxPainLevel > price ? 'a magnet above' : 'an anchor at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
         type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${dealerGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"Dark pool prints matter most when they align with dealer gamma + options flow. Here, ${flowLabel.includes('mixed') ? 'they don\'t — yet' : 'they do'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${modeledGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"Dark pool prints matter most when they align with gamma mechanics + options positioning. Here, ${flowLabel.includes('mixed') ? 'they don\'t — yet' : 'they do'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
@@ -1278,7 +1278,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const strikes = nearATMStrikes.length > 0 ? nearATMStrikes : sortedStrikes.slice(0, 20);
     
     const netGamma = strikes.map(s => optionsChain.gammaByStrike[s] || 0);
-    const totalDealerExposure = netGamma.reduce((a, b) => a + b, 0);
+    const totalGammaExposure = netGamma.reduce((a, b) => a + b, 0);
     
     // Find gamma flip points (where gamma crosses zero)
     const gammaFlips: { strike: number; percentile: number }[] = [];
@@ -1293,7 +1293,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       strikes,
       netGamma,
       spotPrice: optionsChain.spotPrice,
-      totalDealerExposure,
+      totalGammaExposure,
       gammaFlips,
       asOfTimestamp: polygonTimestamp
     };

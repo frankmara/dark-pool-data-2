@@ -1,28 +1,29 @@
 // TRUTH GATE HELPERS: Export these to ensure thread text matches chart labels exactly
 export interface ChartMetadata {
-  flowLabel: 'Bullish positioning dominant' | 'Bearish flow elevated' | 'Mixed sentiment across strikes';
-  dealerGammaLabel: 'long gamma - expect mean reversion' | 'short gamma - amplified moves likely';
-  dealerGammaPosition: 'long' | 'short';
+  flowLabel: 'Bullish positioning dominant' | 'Bearish OI elevated' | 'Mixed sentiment across strikes';
+  modeledGammaLabel: 'long gamma - expect mean reversion' | 'short gamma - amplified moves likely';
+  modeledGammaPosition: 'long' | 'short';
   skewLabel: string;
 }
 
-// Calculate flow label using same logic as chart-generator (line 558)
-export function calculateFlowLabel(bullishCells: number, bearishCells: number): ChartMetadata['flowLabel'] {
+// Calculate OI label using same logic as chart-generator (uses OI not "flow" since this is structural data)
+export function calculateOILabel(bullishCells: number, bearishCells: number): ChartMetadata['flowLabel'] {
   if (bullishCells > bearishCells * 1.5) return 'Bullish positioning dominant';
-  if (bearishCells > bullishCells * 1.5) return 'Bearish flow elevated';
+  if (bearishCells > bullishCells * 1.5) return 'Bearish OI elevated';
   return 'Mixed sentiment across strikes';
 }
 
 // Calculate modeled gamma label (15-min delayed structural data from Polygon)
-export function calculateModeledGammaLabel(totalNetGamma: number): { label: ChartMetadata['dealerGammaLabel']; position: ChartMetadata['dealerGammaPosition'] } {
+export function calculateModeledGammaLabel(totalNetGamma: number): { label: ChartMetadata['modeledGammaLabel']; position: ChartMetadata['modeledGammaPosition'] } {
   if (totalNetGamma > 0) {
     return { label: 'long gamma - expect mean reversion', position: 'long' };
   }
   return { label: 'short gamma - amplified moves likely', position: 'short' };
 }
 
-// Legacy alias for backward compatibility
+// Legacy aliases for backward compatibility
 export const calculateDealerGammaLabel = calculateModeledGammaLabel;
+export const calculateFlowLabel = calculateOILabel;
 
 // Calculate skew label using same logic as volatility smile chart (line 464)
 export function calculateSkewLabel(putIV: number, callIV: number): string {
@@ -511,7 +512,7 @@ export function generateVolatilitySmileSvg(data: VolatilitySmileData): string {
   return svg;
 }
 
-interface OptionsFlowHeatmapData {
+interface IVSurfaceMapData {
   ticker: string;
   strikes: number[];
   expiries: string[];
@@ -520,7 +521,10 @@ interface OptionsFlowHeatmapData {
   asOfTimestamp?: string;
 }
 
-export function generateOptionsFlowHeatmapSvg(data: OptionsFlowHeatmapData): string {
+// Legacy type alias for backward compatibility
+type OptionsFlowHeatmapData = IVSurfaceMapData;
+
+export function generateIVSurfaceMapSvg(data: IVSurfaceMapData): string {
   const width = 800;
   const height = 500;
   const padding = { top: 60, right: 30, bottom: 80, left: 80 };
@@ -820,12 +824,12 @@ export function generateMockVolatilitySmileData(ticker: string, spotPrice: numbe
   };
 }
 
-export function generateMockOptionsFlowData(ticker: string, spotPrice: number, sentimentBias?: 'bullish' | 'bearish' | 'neutral'): OptionsFlowHeatmapData {
+export function generateMockIVSurfaceData(ticker: string, spotPrice: number, sentimentBias?: 'bullish' | 'bearish' | 'neutral'): IVSurfaceMapData {
   const baseStrike = Math.round(spotPrice / 5) * 5;
   const strikes = Array.from({ length: 10 }, (_, i) => baseStrike - 25 + i * 5);
   const expiries = ['Jan 10', 'Jan 17', 'Jan 24', 'Feb 21', 'Mar 21'];
   
-  const cells: OptionsFlowHeatmapData['cells'] = [];
+  const cells: IVSurfaceMapData['cells'] = [];
   strikes.forEach(strike => {
     expiries.forEach(expiry => {
       if (Math.random() > 0.3) {
@@ -858,6 +862,12 @@ export function generateMockOptionsFlowData(ticker: string, spotPrice: number, s
 
   return { ticker, strikes, expiries, cells, spotPrice };
 }
+
+// Legacy alias for backward compatibility
+export const generateMockOptionsFlowData = generateMockIVSurfaceData;
+
+// Legacy alias for backward compatibility
+export const generateOptionsFlowHeatmapSvg = generateIVSurfaceMapSvg;
 
 export function generateMockPutCallOIData(ticker: string, spotPrice: number): PutCallOIData {
   const baseStrike = Math.round(spotPrice / 5) * 5;
@@ -939,7 +949,7 @@ interface GammaExposureData {
   strikes: number[];
   netGamma: number[];
   spotPrice: number;
-  totalDealerExposure: number;
+  totalGammaExposure: number;  // Modeled net gamma, not dealer-specific claim
   gammaFlips: { strike: number; percentile: number }[];
   asOfTimestamp?: string;
 }
@@ -1005,11 +1015,11 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
   // Modeled Exposure Gauge
   const gaugeX = width - padding.right + 20;
   const gaugeY = padding.top + 40;
-  const exposureColor = data.totalDealerExposure > 0 ? '#10B981' : '#EF4444';
+  const exposureColor = data.totalGammaExposure > 0 ? '#10B981' : '#EF4444';
   svg += `<rect x="${gaugeX}" y="${gaugeY}" width="80" height="70" fill="#1a1a2e" rx="8" stroke="${exposureColor}" stroke-width="2"/>`;
   svg += `<text x="${gaugeX + 40}" y="${gaugeY + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">NET GAMMA</text>`;
-  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 42}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold" font-family="monospace">${data.totalDealerExposure > 0 ? '+' : ''}${formatLargeNumber(data.totalDealerExposure)}</text>`;
-  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 58}" text-anchor="middle" fill="${exposureColor}" font-size="10" font-weight="bold" font-family="sans-serif">${data.totalDealerExposure > 0 ? 'LONG' : 'SHORT'}</text>`;
+  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 42}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold" font-family="monospace">${data.totalGammaExposure > 0 ? '+' : ''}${formatLargeNumber(data.totalGammaExposure)}</text>`;
+  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 58}" text-anchor="middle" fill="${exposureColor}" font-size="10" font-weight="bold" font-family="sans-serif">${data.totalGammaExposure > 0 ? 'LONG' : 'SHORT'}</text>`;
 
   // Legend
   svg += `<rect x="${padding.left}" y="${height - 50}" width="200" height="22" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
@@ -1020,7 +1030,7 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
 
   // Interpretation
   const maxGammaStrike = data.strikes[data.netGamma.indexOf(Math.max(...data.netGamma))];
-  const interpretation = data.totalDealerExposure > 0 
+  const interpretation = data.totalGammaExposure > 0 
     ? `Long gamma near $${maxGammaStrike} - expect mean reversion` 
     : 'Short gamma environment - amplified moves likely';
   svg += `<text x="${padding.left + 220}" y="${height - 35}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
@@ -1037,13 +1047,13 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
   return svg;
 }
 
-export function generateMockGammaExposureData(ticker: string, spotPrice: number, dealerGammaBias?: 'long' | 'short'): GammaExposureData {
+export function generateMockGammaExposureData(ticker: string, spotPrice: number, gammaBias?: 'long' | 'short'): GammaExposureData {
   const baseStrike = Math.round(spotPrice / 5) * 5;
   const strikes = Array.from({ length: 20 }, (_, i) => baseStrike - 45 + i * 5);
   
-  // Bias gamma based on dealer position (for truth gate consistency)
+  // Bias gamma based on modeled position (for truth gate consistency)
   // Short gamma = negative total exposure, Long gamma = positive total exposure
-  const biasFactor = dealerGammaBias === 'long' ? 0.3 : dealerGammaBias === 'short' ? -0.3 : 0;
+  const biasFactor = gammaBias === 'long' ? 0.3 : gammaBias === 'short' ? -0.3 : 0;
   
   const netGamma = strikes.map(strike => {
     const distFromSpot = (strike - spotPrice) / spotPrice;
@@ -1066,7 +1076,7 @@ export function generateMockGammaExposureData(ticker: string, spotPrice: number,
     strikes,
     netGamma,
     spotPrice,
-    totalDealerExposure: netGamma.reduce((a, b) => a + b, 0),
+    totalGammaExposure: netGamma.reduce((a, b) => a + b, 0),
     gammaFlips
   };
 }
@@ -1586,8 +1596,8 @@ function getSectorPeers(ticker: string): string[] {
     }
   }
   
-  // Default to market indices for unknown tickers
-  return [ticker, 'SPY', 'QQQ', 'IWM', 'DIA', 'VIX'];
+  // Default to market indices for unknown tickers (no VIX - not a correlation peer)
+  return [ticker, 'SPY', 'QQQ', 'IWM', 'DIA', 'XLF'];
 }
 
 export function generateMockSectorCorrelationData(ticker: string): SectorCorrelationData {

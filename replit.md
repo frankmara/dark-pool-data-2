@@ -201,7 +201,7 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
 - Monospace fonts for numerical data
 - Real-time status indicators with pulsing animations
 
-## Recent Changes (Dec 28, 2025)
+## Recent Changes (Dec 29, 2025)
 - Integrated all frontend pages with backend APIs using react-query
 - Global toggle panel now persists automation settings to backend
 - Master toggle cascade logic: OFF disables all, ON re-enables Dark Pool and Options scanners
@@ -219,10 +219,22 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
   - INTERPRETATION annotation boxes with contextual analysis on each chart
   - Enhanced legends with clear color coding and element explanations
   - Source attribution footers (e.g., "DARK POOL DATA | Source: Options Analytics")
-  - 5-post thread format with institutional metrics: ADV %, VWAP delta, dealer gamma positioning, IV percentiles, probability scenarios
+  - 5-post thread format with institutional metrics: ADV %, VWAP delta, modeled gamma positioning, IV percentiles, probability scenarios
 - **Unusual Whales API Integration Fixed**:
   - Dark Pool endpoint: `/api/darkpool/recent` - returns live prints (ticker, size, price, premium, executed_at)
   - Options Flow endpoint: `/api/option-trades/flow-alerts` - returns live alerts (ticker, total_premium, total_size, strike, expiry, type)
   - Field parsing updated to match actual API response structure
   - Zero mock data - all posts marked with `isLiveData: true` when sourced from live APIs
   - Returns 503 error when no live API data available instead of generating fake data
+- **Credibility & Terminology Fixes (Dec 29, 2025)**:
+  - Fixed PUT breakeven calculation: PUT = strike - premium, CALL = strike + premium
+  - Renamed "Options Flow Heatmap" to "IV Surface Map (15-min delayed)" - Polygon can't provide flow data
+  - Removed ALL "dealer" terminology from charts - now uses "Modeled Gamma" consistently
+  - Chart labels: "Net Dealer Gamma" → "Net Gamma by Strike (modeled, 15-min delayed)"
+  - Gauge label: "DEALER NET" → "NET GAMMA"
+  - Max Pain subtitle: "Dealer Neutrality Point" → "Options Expiry Pin Level"
+  - P/C ratio: Added null handling, displays "N/A" with "INSUFFICIENT DATA" when data unavailable
+  - Terminology: "Call-heavy flow" → "Call-heavy OI" (structural data, not trade flow)
+  - Correlation matrix: Uses real sector peer tickers (GLD, GDX, SIL for precious metals, etc.) instead of "PEER1", "PEER2"
+  - Default correlation peers: Replaced VIX with XLF (VIX is not a correlation peer)
+  - Thread text: "dealer gamma + options flow" → "gamma mechanics + options positioning"
