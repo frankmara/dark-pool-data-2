@@ -933,135 +933,128 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const expiry = data.expiry || '2026-01-17';
     const optionType = (data.type || 'CALL').toUpperCase();
     const contracts = data.contracts || printSize;
-    const contractsFormatted = formatNumber(contracts);
     const sharesEquiv = contracts * 100;
     const sharesEquivFormatted = formatNumber(sharesEquiv);
-    const deltaExposure = Math.floor((contracts * 100 * 0.5) / 1000);
     
     // Probability breakdown based on unusuality (deterministic)
     const primaryProb = 55 + Math.floor(unusualityScore * 0.25);
-    const secondaryProb = Math.floor((100 - primaryProb) * 0.6);
-    const tailProb = 100 - primaryProb - secondaryProb;
+    const tailProb = Math.floor((100 - primaryProb) * 0.3);
     
     // Gamma wall and flip levels
     const gammaWall = strike;
     const gexFlip = Math.floor(strike * 0.97);
     
-    // Institutional-grade educational thread (8/8 format matching example)
+    // MASTER PROMPT STYLE: Educational, Narrative, Viral Thread (8/8 format)
     thread = [
       {
         index: 1,
-        content: `1/8 Hook: $${ticker} options sweep ($${premiumFormatted}, ~${sharesEquivFormatted} shares equiv at $${strike} strike, ${flowPercentile}th percentile - unusually high volume relative to average) sets the stage for institutional positioning. Educational basics: Options sweeps are large, aggressive orders that "sweep" across multiple exchanges to fill quickly, signaling urgency. Narrative starts: This ${sentiment}-toned flow (${optionType} ${strike} ${expiry}) ties into ${sentiment === 'bullish' ? 'accumulation' : 'hedging'} patterns, hinting at ${sentiment === 'bullish' ? 'directional conviction' : 'risk management'}. [Embedded Options Flow Heatmap]`,
+        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just swept size in $${ticker} — but it wasn't ${sentiment === 'bullish' ? 'panic buying' : 'aggressive selling'}.\n\nIt was ${sentiment === 'neutral' ? 'neutral positioning in a high-volatility environment' : sentiment + ' positioning with conviction'}, and that distinction matters more than direction.\n\nMost traders miss this.`,
         type: 'hook',
         chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 2,
-        content: `2/8 Vol Layer: Building on the sweep, the volatility smile chart shows ${skewDirection}-side skew at 12-month extremes (${ivPercentile}th percentile). Simply explained: Skew is the tilt in implied volatility (IV) - the expected future price swings baked into option prices - higher for ${skewDirection}s means more ${sentiment === 'bullish' ? 'upside speculation' : 'fear of downside'}. HV (historical volatility, past actual swings) vs IV spread is ${hvIvSpread} points premium (${hvIvPercentile}th percentile), suggesting ${hvIvPercentile > 75 ? 'IV may be overpriced, watch for vol crush' : 'room for IV expansion if catalyst hits'}. [Embedded HV vs IV Chart]`,
+        content: `2/8 — Teach the concept (Options sweeps)\n\nOptions sweeps exist so institutions can build positions fast across multiple exchanges.\n\nBut here's the key:\n\nSweeps only matter when you know the volatility + dealer context around them.\n\nThis $${premiumFormatted} sweep (~${sharesEquivFormatted} shares equiv) looks big — but relative to $${ticker}'s ADV, it's ${flowPercentile > 80 ? 'serious conviction' : flowPercentile > 60 ? 'notable but not extreme' : 'not panic-level size'}.`,
+        type: 'context',
+        chartRef: 'optionsFlowHeatmap'
+      },
+      {
+        index: 3,
+        content: `3/8 — Introduce tension (Vol disagrees)\n\nNow look at volatility.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is elevated (${ivPercentile}th percentile).\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside calls'} is expensive.\n\nTranslation:\nInstitutions ${sentiment === 'bullish' ? 'are betting on upside' : sentiment === 'bearish' ? 'aren\'t betting on upside — they\'re paying to stay protected' : 'are hedging, not chasing'}.`,
+        type: 'tension',
+        chartRef: 'volatilitySmile'
+      },
+      {
+        index: 4,
+        content: `4/8 — Explain volatility simply\n\nImplied Volatility (IV) is what the market expects.\nHistorical Volatility (HV) is what actually happened.\n\nRight now:\nIV > HV by ~${hvIvSpread} points.\n\nThat gap usually signals positioning for movement, not confidence in direction.`,
         type: 'volatility',
         chartRef: 'historicalVsImpliedVol'
       },
       {
-        index: 3,
-        content: `3/8 Greeks Tie-In: Vega surface concentrates in front-month options (${flowPercentile}th percentile unusuality). Vega, broken down: It's how much an option's price changes if volatility shifts by 1% - high here means sensitivity to IV changes. Far-strike NaNs (missing data, likely hidden off-exchange trades) and net ${sentiment === 'bullish' ? 'positive' : 'negative'} delta (overall options more sensitive to price ${sentiment === 'bullish' ? 'rises' : 'drops'}) suggest ${sentiment === 'bullish' ? 'directional' : 'defensive'} positioning. Narrative: This amplifies the sweep's signal, as institutions ${sentiment === 'bullish' ? 'bet on upside' : 'brace for swings'}. [Embedded Greeks Surface]`,
-        type: 'greeks',
-        chartRef: 'greeksSurface'
-      },
-      {
-        index: 4,
-        content: `4/8 Gamma Context: Dealer gamma exposure ${gammaNetExposure} overall, with wall at $${gammaWall}. Gamma explained simply: It's the rate at which an option's delta (sensitivity to stock price) changes, often forcing dealers to buy/sell shares to hedge, which can accelerate price moves like a snowball effect. Story: This wall could ${sentiment === 'bullish' ? 'propel prices higher if broken' : 'pin prices, causing chop'} - links to the sweep's conviction. GEX flip: $${gexFlip}. Prob: ${primaryProb}% chance of ${sentiment === 'bullish' ? 'breakout' : 'mean reversion'}. [Embedded Gamma Exposure]`,
+        index: 5,
+        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma, price moves tend to ${sentiment === 'bullish' ? 'stabilize' : 'accelerate'}, not ${sentiment === 'bullish' ? 'accelerate' : 'stabilize'}.\n\nBut here's the catch:\nWithout aggressive directional flow, this becomes ${sentiment === 'bullish' ? 'trend' : 'chop'}, not ${sentiment === 'bullish' ? 'chop' : 'trend'}.`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
       {
-        index: 5,
-        content: `5/8 Trade Dynamics: Mid-session whale sweeps peak at $${premiumFormatted}+, with options volume at ${optionsVolumeRatio}% of stock ADV (average daily volume). ADV is just the typical shares traded per day; high ratio here means unusually strong options activity relative to stock. Narrative: This intraday buildup reinforces the flow timing, with ${conviction.toLowerCase()} conviction for potential ${sentiment === 'bullish' ? 'continuation' : 'mean reversion'}. Tail risk: ${tailProb}% chance of sharp reversal. [Embedded Trade Tape Timeline]`,
+        index: 6,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV), but whale activity is ${sentiment === 'neutral' ? 'inconsistent' : sentiment === 'bullish' ? 'accumulating' : 'distributing'}.\n\nThat's not ${sentiment === 'neutral' ? 'momentum' : 'hedging'}.\nThat's ${sentiment === 'neutral' ? 'insurance being rolled and repositioned' : sentiment === 'bullish' ? 'conviction building' : 'risk being offloaded'}.\n\nBig difference.`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },
       {
-        index: 6,
-        content: `6/8 Sector Link: Avg correlation ${avgCorrelation} to ${sector} peers like ${peerCorrelations[0]?.ticker} (${peerCorrelations[0]?.corr}) or ${peerCorrelations[1]?.ticker} (${peerCorrelations[1]?.corr}) - correlation means how much $${ticker} moves with others. ${parseFloat(avgCorrelation) > 0.6 ? 'Sector-aligned (no big decoupling)' : 'Lower correlation suggests $' + ticker + '-specific catalyst'}, probe macro factors like ${sector} demand. Story: NaN caveats (data gaps) suggest unreported linkages; this contextualizes the sweep as ${parseFloat(avgCorrelation) > 0.6 ? 'part of industry-wide flow' : 'potentially isolated alpha'}. [Embedded Sector Correlation Matrix]`,
-        type: 'sector',
-        chartRef: 'sectorCorrelation'
-      },
-      {
         index: 7,
-        content: `7/8 Pain & Rank: Max pain at $${strike} (${sentiment === 'bullish' ? 'call' : 'put'}-heavy open interest ladder - more ${sentiment === 'bullish' ? 'calls' : 'puts'} outstanding). Max pain explained: It's the price where dealers lose least on expiring options, often acting like a magnet. IV histogram at ${ivPercentile}th percentile (${ivPercentile > 80 ? 'elevated, crush risk post-catalyst' : 'not extreme, room to expand'}). Narrative: ${strike > price ? 'Upward pull above current spot' : 'Downward pressure near current levels'} parallels similar setups where ${sentiment === 'bullish' ? 'upside' : 'consolidation'} followed. [Embedded Max Pain + IV Rank Composite]`,
-        type: 'pain',
+        content: `7/8 — Put it in context (Sector + Max Pain)\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'tightly correlated' : 'loosely correlated'} with ${sector} peers — ${parseFloat(avgCorrelation) > 0.6 ? 'no decoupling' : 'watch for divergence'}.\n\nMax pain sits ${strike > price ? 'above' : 'at'} spot, acting like a ${strike > price ? 'magnet' : 'ceiling'}, not a launchpad.\n\nThis is what ${sentiment === 'neutral' ? 'compression before resolution' : sentiment === 'bullish' ? 'accumulation before breakout' : 'distribution before breakdown'} looks like.`,
+        type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 Synthesis: Unusuality score ${unusualityScore}/100 (from percentiles: vol ${flowPercentile}th, skew ${ivPercentile}th, gamma ${gammaValue > 0 ? '+' : ''}${gammaValue}). Overall educational story: The options sweep signals ${sentiment} positioning in an ${ivPercentile > 75 ? 'elevated' : 'moderate'} IV regime (expected swings ${ivPercentile > 75 ? 'higher' : 'within range'}), favoring ${sentiment === 'bullish' ? 'breakout' : 'consolidation'} (${primaryProb}% prob) amid gamma ${sentiment === 'bullish' ? 'acceleration' : 'pinning'} and sector ties. Action: Monitor public (lit) flow for confirmation. Not advice - DYOR. Sources: @unusual_whales. #DarkPools #InstitutionalFlow [Embedded Options vs Stock Volume + Unusuality Radial Chart]`,
+        content: `8/8 — Synthesis (The lesson)\n\nThis ${sentiment === 'neutral' ? 'isn\'t bullish or bearish' : 'is ' + sentiment}.\n\nIt's ${sentiment === 'neutral' ? 'neutral' : sentiment} positioning in elevated volatility, where:\n• Dealers ${sentiment === 'bullish' ? 'dampen' : 'amplify'} moves\n• Institutions ${sentiment === 'neutral' ? 'hedge, not chase' : sentiment === 'bullish' ? 'accumulate with conviction' : 'reduce risk'}\n• Direction needs confirmation from public flow\n\nTakeaway:\nOptions sweeps matter most when they align with aggressive dealer positioning.\nHere, they ${sentiment === 'neutral' ? 'don\'t — yet' : 'do'}.\n\nBookmark this setup. Watch what confirms it.`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
     ];
   } else {
-    // Dark pool print - Institutional-grade educational thread (8/8 format)
+    // Dark pool print - MASTER PROMPT STYLE: Educational, Narrative, Viral Thread (8/8 format)
     const volumeFormatted = formatNumber(printSize);
     const notionalFormatted = formatNumber(notionalValue);
-    const flowType = sentiment === 'bullish' ? 'Accumulation' : sentiment === 'bearish' ? 'Distribution' : 'Neutral';
-    const venue = data.venue || 'DARK';
     
     // Deterministic probability breakdown based on unusuality
     const dpPrimaryProb = 55 + Math.floor(unusualityScore * 0.25);
-    const dpSecondaryProb = Math.floor((100 - dpPrimaryProb) * 0.6);
-    const dpTailProb = 100 - dpPrimaryProb - dpSecondaryProb;
+    const dpTailProb = Math.floor((100 - dpPrimaryProb) * 0.3);
     
     // Gamma wall and flip levels for dark pool
     const gammaWall = Math.floor(price * 1.02);
     const gexFlip = Math.floor(price * 0.97);
     const maxPainLevel = Math.floor(price * 0.99);
     
-    // Institutional-grade educational thread for dark pool (8/8 format)
     thread = [
       {
         index: 1,
-        content: `1/8 Hook: $${ticker} dark pool print ($${notionalFormatted}, ~${volumeFormatted} shares at $${price.toFixed(2)}, ${flowPercentile}th percentile - unusually high volume relative to average) sets the stage for institutional moves in a volatile market. Educational basics: Dark pools are private exchanges for big trades to avoid impacting public prices. Narrative starts: This ${sentiment}-toned print (${advPercent}% of ADV) ties into ${sentiment === 'bullish' ? 'accumulation' : sentiment === 'bearish' ? 'distribution' : 'mixed'} sentiment in options flow, hinting at ${sentiment === 'bullish' ? 'repositioning for upside' : 'hedging or profit-taking'}. [Embedded Dark Pool Print + Options Flow Heatmap]`,
+        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just printed size in $${ticker} — but it wasn't ${sentiment === 'bullish' ? 'aggressive buying' : 'panic selling'}.\n\nIt was ${sentiment === 'neutral' ? 'neutral positioning in a high-volatility environment' : sentiment + ' positioning with intent'}, and that distinction matters more than direction.\n\nMost traders miss this.`,
         type: 'hook',
         chartRef: 'optionsFlowHeatmap'
       },
       {
         index: 2,
-        content: `2/8 Vol Layer: Building on the print, the volatility smile chart shows ${skewDirection}-side skew at 12-month extremes (${ivPercentile}th percentile). Simply explained: Skew is the tilt in implied volatility (IV) - the expected future price swings baked into option prices - higher for ${skewDirection}s means more ${sentiment === 'bullish' ? 'upside speculation' : 'fear of downside'}. HV (historical volatility, past actual swings) vs IV spread is ${hvIvSpread} points premium (${hvIvPercentile}th percentile), suggesting ${hvIvPercentile > 75 ? 'room for IV expansion' : 'vol may be underpriced'}. [Embedded HV vs IV Chart]`,
+        content: `2/8 — Teach the concept (Dark pools)\n\nDark pools exist so institutions can trade without moving price.\n\nBut here's the key:\n\nDark pool prints only matter when you know the volatility + dealer context around them.\n\nThis $${notionalFormatted} print (~${volumeFormatted} shares) looks big — but relative to $${ticker}'s ADV, it's ${flowPercentile > 80 ? 'serious conviction' : flowPercentile > 60 ? 'notable but not extreme' : 'not panic-level size'}.`,
+        type: 'context',
+        chartRef: 'optionsFlowHeatmap'
+      },
+      {
+        index: 3,
+        content: `3/8 — Introduce tension (Options disagree)\n\nNow look at options.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is elevated (${ivPercentile}th percentile).\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside calls'} is expensive.\n\nTranslation:\nInstitutions ${sentiment === 'bullish' ? 'are betting on upside' : sentiment === 'bearish' ? 'aren\'t betting on upside — they\'re paying to stay protected' : 'are hedging, not chasing'}.`,
+        type: 'tension',
+        chartRef: 'volatilitySmile'
+      },
+      {
+        index: 4,
+        content: `4/8 — Explain volatility simply\n\nImplied Volatility (IV) is what the market expects.\nHistorical Volatility (HV) is what actually happened.\n\nRight now:\nIV > HV by ~${hvIvSpread} points.\n\nThat gap usually signals positioning for movement, not confidence in direction.`,
         type: 'volatility',
         chartRef: 'historicalVsImpliedVol'
       },
       {
-        index: 3,
-        content: `3/8 Greeks Tie-In: Vega surface concentrates in front-month options (${flowPercentile}th percentile unusuality). Vega, broken down: It's how much an option's price changes if volatility shifts by 1% - high here means sensitivity to IV changes. Far-strike NaNs (missing data, likely hidden off-exchange trades) and net ${sentiment === 'bullish' ? 'positive' : 'negative'} delta (overall options more sensitive to price ${sentiment === 'bullish' ? 'rises' : 'drops'}) suggest ${sentiment === 'bullish' ? 'bullish' : 'defensive'} hedging. Narrative: This amplifies the print's signal, as institutions ${sentiment === 'bullish' ? 'position for upside' : 'brace for swings'}. [Embedded Greeks Surface]`,
-        type: 'greeks',
-        chartRef: 'greeksSurface'
-      },
-      {
-        index: 4,
-        content: `4/8 Gamma Context: Dealer gamma exposure ${gammaNetExposure} overall, ${sentiment === 'bullish' ? 'but long gamma near $' + gexFlip : 'with short gamma'} with a wall at $${gammaWall}. Gamma explained simply: It's the rate at which an option's delta (sensitivity to stock price) changes, often forcing dealers to buy/sell shares to hedge, which can accelerate price moves like a snowball effect. Story: This wall could ${sentiment === 'bullish' ? 'pin prices, leading to amplified volatility if broken' : 'accelerate moves downward'} - links to the print's ${sentiment === 'bullish' ? 'slight premium to' : 'discount vs'} VWAP. Prob: ${dpPrimaryProb}% chance of ${sentiment === 'bullish' ? 'mean reversion' : 'continuation'}. [Embedded Gamma Exposure]`,
+        index: 5,
+        content: `5/8 — Dealer mechanics (this is where edge comes from)\n\nDealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma near $${gammaWall}.\n\nWhy that matters:\nWhen dealers are ${sentiment === 'bullish' ? 'long' : 'short'} gamma, price moves tend to ${sentiment === 'bullish' ? 'stabilize' : 'accelerate'}, not ${sentiment === 'bullish' ? 'accelerate' : 'stabilize'}.\n\nBut here's the catch:\nWithout aggressive directional flow, this becomes ${sentiment === 'bullish' ? 'trend' : 'chop'}, not ${sentiment === 'bullish' ? 'chop' : 'trend'}.`,
         type: 'gamma',
         chartRef: 'gammaExposure'
       },
       {
-        index: 5,
-        content: `5/8 Trade Dynamics: Mid-session whale sweeps (large, fast trades) peak at $${notionalFormatted}+, with options volume at ${optionsVolumeRatio}% of stock ADV (average daily volume). ADV is just the typical shares traded per day; high ratio here means unusually strong options activity relative to stock. Narrative: This intraday buildup reinforces the dark pool timing, with ${conviction.toLowerCase()} conviction for potential ${sentiment === 'bullish' ? 'mean reversion' : 'continuation'}. Tail risk: ${dpTailProb}% chance of sharp reversal. [Embedded Trade Tape Timeline]`,
+        index: 6,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is elevated (${optionsVolumeRatio}% of stock ADV), but whale activity is ${sentiment === 'neutral' ? 'inconsistent' : sentiment === 'bullish' ? 'accumulating' : 'distributing'}.\n\nThat's not ${sentiment === 'neutral' ? 'momentum' : 'hedging'}.\nThat's ${sentiment === 'neutral' ? 'insurance being rolled and repositioned' : sentiment === 'bullish' ? 'conviction building' : 'risk being offloaded'}.\n\nBig difference.`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },
       {
-        index: 6,
-        content: `6/8 Sector Link: Average correlation ${avgCorrelation} to ${sector} peers like ${peerCorrelations[0]?.ticker} (${peerCorrelations[0]?.corr}) or ${peerCorrelations[1]?.ticker} (${peerCorrelations[1]?.corr}) - correlation means how much $${ticker} moves with others. ${parseFloat(avgCorrelation) > 0.6 ? 'Sector-aligned (no big decoupling)' : 'Lower correlation suggests ticker-specific catalyst'}, probe macro factors like ${sector} demand. Story: NaN caveats (data gaps) suggest unreported linkages; this contextualizes the print as ${parseFloat(avgCorrelation) > 0.6 ? 'part of industry-wide flow, not isolated' : 'potentially isolated alpha'}. [Embedded Sector Correlation Matrix]`,
-        type: 'sector',
-        chartRef: 'sectorCorrelation'
-      },
-      {
         index: 7,
-        content: `7/8 Pain & Rank: Max pain at $${maxPainLevel} (${sentiment === 'bullish' ? 'put' : 'call'}-heavy open interest ladder - more ${sentiment === 'bullish' ? 'puts' : 'calls'} outstanding, which are bets on ${sentiment === 'bullish' ? 'drops' : 'rises'}). Max pain explained: It's the price where dealers lose least on expiring options, often acting like a magnet. IV histogram at ${ivPercentile}th percentile (${ivPercentile > 80 ? 'elevated but not extreme' : 'room to expand'}). Narrative: This ${maxPainLevel < price ? 'upward pull above current spot' : 'downward pressure'} parallels similar setups where ${sentiment === 'bullish' ? 'upside followed if hedging faded' : 'consolidation was likely'}. [Embedded Max Pain + IV Rank Composite]`,
-        type: 'pain',
+        content: `7/8 — Put it in context (Sector + Max Pain)\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'tightly correlated' : 'loosely correlated'} with ${sector} peers — ${parseFloat(avgCorrelation) > 0.6 ? 'no decoupling' : 'watch for divergence'}.\n\nMax pain sits ${maxPainLevel > price ? 'above' : 'just below'} spot, acting like a ${maxPainLevel > price ? 'magnet' : 'anchor'}, not a launchpad.\n\nThis is what ${sentiment === 'neutral' ? 'compression before resolution' : sentiment === 'bullish' ? 'accumulation before breakout' : 'distribution before breakdown'} looks like.`,
+        type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 Synthesis: Unusuality score ${unusualityScore}/100 (from percentiles: vol ${flowPercentile}th, skew ${ivPercentile}th, etc.). Overall educational story: The dark pool print signals ${sentiment} positioning in an ${ivPercentile > 75 ? 'elevated' : 'moderate'} IV regime (expected swings ${ivPercentile > 75 ? 'higher than usual' : 'within range'}), favoring ${flowType.toLowerCase()} (${dpPrimaryProb}% prob) amid gamma ${sentiment === 'bullish' ? 'amplification' : 'pinning'} and sector ties. Action: Monitor public (lit) flow for confirmation. Not advice - DYOR. Sources: @unusual_whales. #DarkPools #InstitutionalFlow [Embedded Options vs Stock Volume + Unusuality Radial Chart]`,
+        content: `8/8 — Synthesis (The lesson)\n\nThis ${sentiment === 'neutral' ? 'isn\'t bullish or bearish' : 'is ' + sentiment}.\n\nIt's ${sentiment === 'neutral' ? 'neutral' : sentiment} positioning in elevated volatility, where:\n• Dealers ${sentiment === 'bullish' ? 'dampen' : 'amplify'} moves\n• Institutions ${sentiment === 'neutral' ? 'hedge, not chase' : sentiment === 'bullish' ? 'accumulate with conviction' : 'reduce risk'}\n• Direction needs confirmation from public flow\n\nTakeaway:\nDark pool prints matter most when they align with aggressive options positioning.\nHere, they ${sentiment === 'neutral' ? 'don\'t — yet' : 'do'}.\n\nBookmark this setup. Watch what confirms it.`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
