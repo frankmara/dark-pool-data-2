@@ -1168,7 +1168,10 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     optionType: isOptions ? (data.type?.toLowerCase() as 'call' | 'put') : undefined,
     premium: isOptions ? data.premium : undefined,
     delta: isOptions ? data.delta : undefined,
-    breakeven: isOptions ? (data.strike + (data.premium || 0) / 100) : undefined,
+    breakeven: isOptions ? (data.type?.toLowerCase() === 'put' 
+      ? data.strike - (data.premium || 0) / 100  // PUT: breakeven = strike - premium
+      : data.strike + (data.premium || 0) / 100  // CALL: breakeven = strike + premium
+    ) : undefined,
     sentiment,
     conviction: conviction as 'high' | 'medium' | 'low',
     venue: isOptions ? undefined : (data.venue || 'DARK')
@@ -1231,7 +1234,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       callOIChange: callOI.map(oi => oi * 0.1), // Estimate: 10% change
       putOIChange: putOI.map(oi => oi * 0.1),
       spotPrice: optionsChain.spotPrice,
-      putCallRatio: totalCallOI > 0 ? totalPutOI / totalCallOI : 1,
+      putCallRatio: (totalCallOI > 0 && totalPutOI > 0) ? totalPutOI / totalCallOI : null,
       asOfTimestamp: polygonTimestamp
     };
     console.error(`[TestPost] Put/Call OI Ladder using ${strikes.length} strikes from Polygon`);

@@ -533,8 +533,8 @@ export function generateOptionsFlowHeatmapSvg(data: OptionsFlowHeatmapData): str
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
 
-  svg += `<text x="${padding.left}" y="30" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Options Flow Heatmap</text>`;
-  svg += `<text x="${padding.left}" y="48" fill="#6b7280" font-size="11" font-family="sans-serif">Premium Volume by Strike/Expiry | Spot: $${data.spotPrice.toFixed(2)}</text>`;
+  svg += `<text x="${padding.left}" y="30" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} IV Surface Map</text>`;
+  svg += `<text x="${padding.left}" y="48" fill="#6b7280" font-size="11" font-family="sans-serif">Positioning by Strike/Expiry (15-min delayed) | Spot: $${data.spotPrice.toFixed(2)}</text>`;
 
   data.expiries.forEach((expiry, i) => {
     const x = padding.left + i * cellWidth + cellWidth / 2;
@@ -612,7 +612,7 @@ interface PutCallOIData {
   callOIChange: number[];
   putOIChange: number[];
   spotPrice: number;
-  putCallRatio: number;
+  putCallRatio: number | null;  // null when insufficient data
   asOfTimestamp?: string;
 }
 
@@ -661,24 +661,28 @@ export function generatePutCallOILadderSvg(data: PutCallOIData): string {
 
   const gaugeX = width - 80;
   const gaugeY = padding.top + 40;
-  const isExtreme = data.putCallRatio > 3 || data.putCallRatio < 0.33;
-  const gaugeColor = isExtreme ? '#EF4444' : '#6b7280';
+  
+  // Handle null P/C ratio (insufficient data)
+  const hasValidRatio = data.putCallRatio !== null && !isNaN(data.putCallRatio);
+  const ratioValue = hasValidRatio ? data.putCallRatio! : 0;
+  const isExtreme = hasValidRatio && (ratioValue > 3 || ratioValue < 0.33);
+  const gaugeColor = !hasValidRatio ? '#6b7280' : isExtreme ? '#EF4444' : '#6b7280';
   
   // P/C Ratio gauge with interpretation
   svg += `<rect x="${gaugeX - 35}" y="${gaugeY - 25}" width="70" height="95" fill="#1a1a2e" rx="8" stroke="${gaugeColor}" stroke-width="${isExtreme ? 2 : 1}"/>`;
   svg += `<text x="${gaugeX}" y="${gaugeY}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">P/C RATIO</text>`;
-  svg += `<text x="${gaugeX}" y="${gaugeY + 25}" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="bold" font-family="monospace">${data.putCallRatio.toFixed(2)}</text>`;
+  svg += `<text x="${gaugeX}" y="${gaugeY + 25}" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="bold" font-family="monospace">${hasValidRatio ? ratioValue.toFixed(2) : 'N/A'}</text>`;
   
-  const ratioInterpretation = data.putCallRatio > 1.5 ? 'BEARISH' : data.putCallRatio < 0.7 ? 'BULLISH' : 'NEUTRAL';
-  const ratioColor = data.putCallRatio > 1.5 ? '#EF4444' : data.putCallRatio < 0.7 ? '#10B981' : '#6b7280';
+  const ratioInterpretation = !hasValidRatio ? 'INSUFFICIENT DATA' : ratioValue > 1.5 ? 'BEARISH' : ratioValue < 0.7 ? 'BULLISH' : 'NEUTRAL';
+  const ratioColor = !hasValidRatio ? '#6b7280' : ratioValue > 1.5 ? '#EF4444' : ratioValue < 0.7 ? '#10B981' : '#6b7280';
   svg += `<text x="${gaugeX}" y="${gaugeY + 45}" text-anchor="middle" fill="${ratioColor}" font-size="8" font-weight="bold" font-family="sans-serif">${ratioInterpretation}</text>`;
   
   if (isExtreme) {
     svg += `<text x="${gaugeX}" y="${gaugeY + 58}" text-anchor="middle" fill="#F59E0B" font-size="7" font-weight="bold" font-family="sans-serif">EXTREME</text>`;
   }
   
-  // Interpretation annotation
-  const oiInterpretation = data.putCallRatio > 1.5 ? 'Elevated put activity - hedging or bearish positioning' : data.putCallRatio < 0.7 ? 'Call-heavy flow - bullish sentiment' : 'Balanced OI distribution';
+  // Interpretation annotation (use "OI" not "flow" - this is open interest, not trade flow)
+  const oiInterpretation = !hasValidRatio ? 'Insufficient put/call OI data' : ratioValue > 1.5 ? 'Elevated put OI - hedging or bearish positioning' : ratioValue < 0.7 ? 'Call-heavy OI - bullish sentiment' : 'Balanced OI distribution';
   svg += `<rect x="${padding.left}" y="${height - 50}" width="320" height="20" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
   svg += `<text x="${padding.left + 10}" y="${height - 36}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${oiInterpretation}</text>`;
   
@@ -952,8 +956,8 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
   
-  svg += `<text x="${padding.left}" y="30" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Gamma Exposure by Strike</text>`;
-  svg += `<text x="${padding.left}" y="48" fill="#6b7280" font-size="11" font-family="sans-serif">Net Dealer Gamma (Positive=Long, Negative=Short)</text>`;
+  svg += `<text x="${padding.left}" y="30" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Modeled Gamma Exposure</text>`;
+  svg += `<text x="${padding.left}" y="48" fill="#6b7280" font-size="11" font-family="sans-serif">Net Gamma by Strike (modeled, 15-min delayed)</text>`;
 
   // Zero line
   const zeroY = padding.top + chartHeight / 2;
@@ -998,12 +1002,12 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
     }
   });
 
-  // Dealer Exposure Gauge
+  // Modeled Exposure Gauge
   const gaugeX = width - padding.right + 20;
   const gaugeY = padding.top + 40;
   const exposureColor = data.totalDealerExposure > 0 ? '#10B981' : '#EF4444';
   svg += `<rect x="${gaugeX}" y="${gaugeY}" width="80" height="70" fill="#1a1a2e" rx="8" stroke="${exposureColor}" stroke-width="2"/>`;
-  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">DEALER NET</text>`;
+  svg += `<text x="${gaugeX + 40}" y="${gaugeY + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif">NET GAMMA</text>`;
   svg += `<text x="${gaugeX + 40}" y="${gaugeY + 42}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold" font-family="monospace">${data.totalDealerExposure > 0 ? '+' : ''}${formatLargeNumber(data.totalDealerExposure)}</text>`;
   svg += `<text x="${gaugeX + 40}" y="${gaugeY + 58}" text-anchor="middle" fill="${exposureColor}" font-size="10" font-weight="bold" font-family="sans-serif">${data.totalDealerExposure > 0 ? 'LONG' : 'SHORT'}</text>`;
 
@@ -1017,8 +1021,8 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
   // Interpretation
   const maxGammaStrike = data.strikes[data.netGamma.indexOf(Math.max(...data.netGamma))];
   const interpretation = data.totalDealerExposure > 0 
-    ? `Dealers long gamma near $${maxGammaStrike} - expect mean reversion` 
-    : 'Dealers short gamma - amplified moves likely';
+    ? `Long gamma near $${maxGammaStrike} - expect mean reversion` 
+    : 'Short gamma environment - amplified moves likely';
   svg += `<text x="${padding.left + 220}" y="${height - 35}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
 
   // Timestamp
@@ -1549,8 +1553,45 @@ export function generateSectorCorrelationSvg(data: SectorCorrelationData): strin
   return svg;
 }
 
+// Get sector peers based on ticker (real tickers instead of placeholders)
+function getSectorPeers(ticker: string): string[] {
+  const sectorMap: Record<string, string[]> = {
+    // Precious metals
+    'SLV': ['SLV', 'GLD', 'GDX', 'SIL', 'SIVR', 'PSLV'],
+    'GLD': ['GLD', 'SLV', 'GDX', 'IAU', 'SGOL', 'PHYS'],
+    'GDX': ['GDX', 'GLD', 'GDXJ', 'NEM', 'GOLD', 'AEM'],
+    // Tech
+    'SPY': ['SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO'],
+    'QQQ': ['QQQ', 'SPY', 'XLK', 'VGT', 'SMH', 'ARKK'],
+    'AAPL': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA'],
+    'NVDA': ['NVDA', 'AMD', 'INTC', 'SMH', 'AVGO', 'TSM'],
+    'TSLA': ['TSLA', 'NIO', 'RIVN', 'LCID', 'F', 'GM'],
+    // Financials
+    'XLF': ['XLF', 'JPM', 'BAC', 'GS', 'MS', 'C'],
+    // Energy
+    'XLE': ['XLE', 'XOM', 'CVX', 'USO', 'OXY', 'COP'],
+    // Bonds
+    'TLT': ['TLT', 'IEF', 'SHY', 'BND', 'AGG', 'TMF'],
+  };
+  
+  // Find matching sector or use generic market peers
+  for (const [key, peers] of Object.entries(sectorMap)) {
+    if (ticker.toUpperCase() === key || peers.includes(ticker.toUpperCase())) {
+      // Put the target ticker first, then other peers
+      const result = [ticker];
+      for (const p of peers) {
+        if (p !== ticker && result.length < 6) result.push(p);
+      }
+      return result;
+    }
+  }
+  
+  // Default to market indices for unknown tickers
+  return [ticker, 'SPY', 'QQQ', 'IWM', 'DIA', 'VIX'];
+}
+
 export function generateMockSectorCorrelationData(ticker: string): SectorCorrelationData {
-  const peers = [ticker, 'PEER1', 'PEER2', 'PEER3', 'PEER4', 'PEER5'];
+  const peers = getSectorPeers(ticker);
   
   const correlations: number[][] = peers.map((_, ri) => 
     peers.map((_, ci) => {
@@ -1597,7 +1638,7 @@ export function generateMaxPainSvg(data: MaxPainData): string {
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
   
   svg += `<text x="${padding.left}" y="28" fill="#ffffff" font-size="16" font-weight="bold" font-family="sans-serif">${data.ticker} Max Pain Analysis</text>`;
-  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">Stacked Call/Put OI with Dealer Neutrality Point</text>`;
+  svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">Stacked Call/Put OI with Options Expiry Pin Level</text>`;
 
   // Stacked bars
   data.strikes.forEach((strike, i) => {
@@ -1650,7 +1691,7 @@ export function generateMaxPainSvg(data: MaxPainData): string {
 
   // Interpretation
   const distFromSpot = data.maxPainStrike - data.spotPrice;
-  const interpretation = Math.abs(distFromSpot) < 3 ? 'Max pain near spot - dealer neutrality achieved' : distFromSpot > 0 ? `Max pain $${distFromSpot.toFixed(0)} above spot - upward magnet` : `Max pain $${Math.abs(distFromSpot).toFixed(0)} below spot - downward pressure`;
+  const interpretation = Math.abs(distFromSpot) < 3 ? 'Max pain near spot - balanced positioning' : distFromSpot > 0 ? `Max pain $${distFromSpot.toFixed(0)} above spot - upward magnet` : `Max pain $${Math.abs(distFromSpot).toFixed(0)} below spot - downward pressure`;
   svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
 
   const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });

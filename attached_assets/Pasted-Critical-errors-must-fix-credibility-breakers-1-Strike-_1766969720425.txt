@@ -1,0 +1,194 @@
+Critical errors (must fix — credibility breakers)
+1) Strike units are completely wrong across multiple charts
+
+Your sweep is $71.5 PUT with spot $71.50. 
+
+Dark Pool Insights - Replit - p…
+
+But your Put/Call OI Delta Ladder shows strikes $19–$29. 
+
+Dark Pool Insights - Replit - p…
+
+Your Gamma Exposure by Strike shows strikes $19–$31. 
+
+Dark Pool Insights - Replit - p…
+
+Your Max Pain chart shows strikes $35–$105. 
+
+Dark Pool Insights - Replit - p…
+
+These cannot all be true for the same underlying at $71.50. This looks like:
+
+wrong underlying (mixing SLV vs SI futures vs another instrument)
+
+wrong strike scaling (dividing/multiplying by 2/10/100)
+
+wrong options ticker mapping (using a different instrument’s chain)
+
+Fix: enforce a sanity check: abs(strike_median - spot) / spot < X for any “near-the-money” chart, and validate strike ranges contain spot.
+
+2) Breakeven is mathematically impossible / mislabeled
+
+Sweep card shows:
+
+$71.5 PUT, expiry 2025-12-26
+
+Breakeven $184.50 
+
+Dark Pool Insights - Replit - p…
+
+For a put, breakeven = strike − premium. It cannot be above strike, and certainly not 184.5 with strike 71.5.
+
+This is either:
+
+wrong sign (call formula used)
+
+wrong premium scale (premium in cents vs dollars)
+
+breakeven field is actually something else
+
+Fix: compute breakeven yourself from premium and strike; do not trust upstream.
+
+3) You label charts as “Flow Heatmap” but Polygon Starter cannot provide true flow heatmaps
+
+Your “Options Flow Heatmap” implies premium volume by strike/expiry grid. 
+
+Dark Pool Insights - Replit - p…
+
+
+Polygon Starter does not give tape-level aggregated premium by cell; Unusual Whales gives single alerts, not full grid.
+
+So unless you’re:
+
+building a heatmap from your own stored alert aggregates, OR
+
+using Polygon trades (which Starter doesn’t include),
+
+this is almost certainly synthetic or mislabeled.
+
+Fix: rename to “Alert Concentration Map” (if from UW alerts) or “Chain Snapshot Heatmap” (if from chain metrics). Never call it “Flow” unless it’s truly trade-derived.
+
+4) Gamma section contradicts itself (and uses forbidden “dealer” language)
+
+Gamma chart says: “Net Dealer Gamma… DEALER NET +$41 LONG… expect mean reversion” 
+
+Dark Pool Insights - Replit - p…
+
+The tweet text says: “Modeled gamma suggests short positioning near $71.5… When gamma is short, moves accelerate.” 
+
+Dark Pool Insights - Replit - p…
+
+So:
+
+chart says dealer long gamma
+
+copy says short gamma
+
+also you’re using “dealer” language even though you’re modeling from chain data
+
+Fix:
+
+remove “dealer” wording: call it “Modeled Gamma Exposure”
+
+make the copy read directly from the chart sign
+
+5) Put/Call OI ladder headline and interpretation are wrong
+
+Chart shows P/C ratio 0.00 and calls it “BULLISH EXTREME”. 
+
+Dark Pool Insights - Replit - p…
+
+
+A P/C ratio of 0.00 is not a realistic computed metric; it indicates:
+
+divide-by-zero
+
+missing puts OI
+
+failed join
+
+strikes not matching chain
+
+Also the interpretation says “Call-heavy flow” but this chart is titled Open Interest Changes, not flow. 
+
+Dark Pool Insights - Replit - p…
+
+Fix:
+
+If it’s OI: say “Call-heavy OI” (not flow)
+
+Add guardrails: if puts_total == 0 → display “Insufficient put OI data” instead of 0.00
+
+Major logic / narrative inconsistencies (will confuse readers)
+6) Directional story conflicts across the thread
+
+Thread claims bearish flow elevated. 
+
+Dark Pool Insights - Replit - p…
+
+OI ladder calls bullish extreme. 
+
+Dark Pool Insights - Replit - p…
+
+Max pain chart says max pain $24 above spot = upward magnet (bullish framing). 
+
+Dark Pool Insights - Replit - p…
+
+This reads like random indicators, not a cohesive thesis.
+
+Fix: require an “alignment check” step: if signals conflict, the copy must say “mixed / conflicting signals” and explain why.
+
+7) “Options volume elevated (200% of stock ADV)” is unsupported by the sources shown
+
+You state this in 6/8. 
+
+Dark Pool Insights - Replit - p…
+
+
+But your data sources are labeled as “Options Flow” and “Volume Analytics” without showing actual underlying computations. 
+
+Dark Pool Insights - Replit - p…
+
+
+Given earlier mismatches, this could be wrong.
+
+Fix: print the components somewhere (options premium, underlying ADV used, timestamp), or downgrade language: “elevated vs recent baseline” only if computed.
+
+8) Correlation matrix is unusable as presented
+
+It’s labeled “Sector Correlation Matrix” but:
+
+peers are PEER1/PEER2…
+
+“General” is referenced in copy (“correlated with General”) 
+
+Dark Pool Insights - Replit - p…
+
+
+This is not interpretable to users.
+
+Fix: replace placeholder peers with real tickers (GLD, GDX, SIL, DXY proxy, etc.) or remove the chart entirely.
+
+Formatting / data hygiene issues
+9) “LIVE” labeling is misleading with 15-minute delayed Polygon
+
+You show “Always On LIVE” at top. 
+
+Dark Pool Insights - Replit - p…
+
+
+If Polygon data is delayed, only UW is “live.”
+
+Fix: show two timestamps:
+
+“Flow event time (UW)”
+
+“Structure as-of time (Polygon, delayed)”
+
+10) Missing key detail in tweet 4/8 (truncated)
+
+Tweet 4 ends at “Right now:” and then IV>HV appears on next page, but in the tweet view it reads incomplete. 
+
+Dark Pool Insights - Replit - p…
+
+Fix: ensure tweet text includes the full sentence, not split by rendering.
