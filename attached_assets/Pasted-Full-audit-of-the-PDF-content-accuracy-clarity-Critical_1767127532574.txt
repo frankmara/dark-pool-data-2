@@ -1,0 +1,141 @@
+Full audit of the PDF content (accuracy + clarity)
+Critical issues (must fix before posting anything as “institutional grade”)
+
+1) Breakeven values are mathematically broken
+
+$SLV $70 CALL shows BREAKEVEN $239.59 which makes no sense for a $70 underlying. 
+
+Dark Pool Insights - Replit- d…
+
+$CORT $55 PUT shows BREAKEVEN $-165.40 (also impossible under normal options pricing). 
+
+Dark Pool Insights - Replit- d…
+
+
+✅ Fix rule:
+
+Call breakeven = strike + premium_per_share
+
+Put breakeven = strike - premium_per_share
+
+premium_per_share = (premium_total / contracts) / 100 (and sanity-check it)
+
+2) Gamma logic contradicts itself (chart says long gamma, text says short gamma)
+Example in $VOO:
+
+The chart/interpretation says NET GAMMA +$3 LONG and “Long gamma near $525” 
+
+Dark Pool Insights - Replit- d…
+
+But the tweet text says “Modeled gamma suggests short positioning near $525” 
+
+Dark Pool Insights - Replit- d…
+
+
+Same exact contradiction appears in $SLV and $CORT as well. 
+
+Dark Pool Insights - Replit- d…
+
+ 
+
+Dark Pool Insights - Replit- d…
+
+
+✅ Fix rule: your narrative must be generated from the computed sign:
+
+If net_gamma > 0 → “long gamma / dampening / mean reversion”
+
+If net_gamma < 0 → “short gamma / acceleration / trend risk”
+…and never allow the “tweet layer” to override the computed label.
+
+3) Strike ranges are wrong / inconsistent (suggests the wrong dataset is being used)
+
+$VOO spot shown $632.40 
+
+Dark Pool Insights - Replit- d…
+
+ but the OI ladder + gamma strike axis is $450–$540 
+
+Dark Pool Insights - Replit- d…
+
+ (way off; looks like you’re pulling the wrong chain or wrong strike grid).
+
+$SLV spot shown $70.00 
+
+Dark Pool Insights - Replit- d…
+
+ but OI ladder uses $19–$29 strikes 
+
+Dark Pool Insights - Replit- d…
+
+ (completely incompatible with spot).
+✅ Fix rule: enforce “strike sanity”:
+
+required: at least X strikes within ±20% of spot (configurable)
+
+if not, mark the chart “DATA ERROR” and do not post that thread
+
+4) You claim “OI elevated” while your own OI module says “INSUFFICIENT DATA”
+
+Tweet says: “Bearish OI elevated” for $VOO 
+
+Dark Pool Insights - Replit- d…
+
+OI ladder shows P/C ratio N/A — INSUFFICIENT DATA 
+
+Dark Pool Insights - Replit- d…
+
+
+Same pattern in $SLV (positioning claims while OI module says insufficient). 
+
+Dark Pool Insights - Replit- d…
+
+
+✅ Fix rule: if OI is missing → the thread must switch to “flow-only mode” and never mention OI.
+
+5) “Vega Surface” shows NaN
+That means your chart pipeline is failing and would destroy credibility instantly. 
+
+Dark Pool Insights - Replit- d…
+
+
+✅ Fix: hard-fail generation when any displayed metric is NaN/inf/null.
+
+Major issues (will hurt trust even if “technically not impossible”)
+
+6) Timestamp confusion
+You show “As of 3:39 PM ET” but the sweep/print card shows “08:39 PM” the same day. That looks like a timezone/data merge bug. 
+
+Dark Pool Insights - Replit- d…
+
+ 
+
+Dark Pool Insights - Replit- d…
+
+7) “Institutions just printed size” over-claims
+$VOO example is 225 shares / $142k. Calling that “institutions” is not defensible without venue/participant classification (you don’t have that). 
+
+Dark Pool Insights - Replit- d…
+
+ 
+
+Dark Pool Insights - Replit- d…
+
+
+✅ Fix: say “a dark pool print hit” (not “institutions did X”).
+
+8) “Options volume is normal (165% of stock ADV)” is not “normal”
+165% of ADV reads elevated by definition. Also you say “bullish flow dominant” then “distribution pressure” — unclear what your model means. 
+
+Dark Pool Insights - Replit- d…
+
+
+✅ Fix: define thresholds + keep language consistent (e.g., “elevated”, “high”, “extreme”).
+
+9) Placeholder charts (“UNUSUAL” repeated)
+Your Options vs Stock Volume panels are clearly not finished. 
+
+Dark Pool Insights - Replit- d…
+
+10) Correlation matrix labels duplicated
+VOO/VOO, SPY/SPY, etc. reads like a formatting bug.

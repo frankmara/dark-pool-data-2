@@ -19,17 +19,18 @@ export function getOrdinalSuffix(n: number): string {
 }
 
 export interface ChartMetadata {
-  flowLabel: 'Bullish positioning dominant' | 'Bearish OI elevated' | 'Mixed sentiment across strikes';
+  flowLabel: 'Bullish flow dominant' | 'Bearish flow elevated' | 'Mixed positioning across strikes';
   modeledGammaLabel: 'long gamma - expect mean reversion' | 'short gamma - amplified moves likely';
   modeledGammaPosition: 'long' | 'short';
   skewLabel: string;
 }
 
-// Calculate OI label using same logic as chart-generator (uses OI not "flow" since this is structural data)
+// Calculate flow label from heatmap cells (premium concentration, NOT actual OI data)
+// NOTE: Avoid "OI" terminology since we're measuring flow patterns, not open interest
 export function calculateOILabel(bullishCells: number, bearishCells: number): ChartMetadata['flowLabel'] {
-  if (bullishCells > bearishCells * 1.5) return 'Bullish positioning dominant';
-  if (bearishCells > bullishCells * 1.5) return 'Bearish OI elevated';
-  return 'Mixed sentiment across strikes';
+  if (bullishCells > bearishCells * 1.5) return 'Bullish flow dominant';
+  if (bearishCells > bullishCells * 1.5) return 'Bearish flow elevated';
+  return 'Mixed positioning across strikes';
 }
 
 // Calculate modeled gamma label (15-min delayed structural data from Polygon)
@@ -377,8 +378,9 @@ export function generateFlowSummarySvg(data: FlowSummaryData): string {
   svg += `<text x="24" y="62" fill="#6b7280" font-size="11" font-family="sans-serif" letter-spacing="1">${eventLabel}</text>`;
 
   const timestamp = new Date(data.timestamp).toLocaleString('en-US', { 
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-  });
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/New_York'
+  }) + ' ET';
   svg += `<text x="${width - 24}" y="40" text-anchor="end" fill="#6b7280" font-size="12" font-family="monospace">${timestamp}</text>`;
 
   svg += `<text x="24" y="100" fill="#9ca3af" font-size="11" font-family="sans-serif">SIZE</text>`;
@@ -1940,9 +1942,9 @@ export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): str
   svg += `<line x1="${width - padding.right}" y1="${padding.top + 35}" x2="${width - padding.right + 15}" y2="${padding.top + 35}" stroke="#EF4444" stroke-width="2"/>`;
   svg += `<text x="${width - padding.right + 17}" y="${padding.top + 38}" fill="#6b7280" font-size="8" font-family="sans-serif">ADV Ratio</text>`;
 
-  // Interpretation
+  // Interpretation - thresholds: >120% = elevated, <80% = subdued, else normal
   const avgRatio = data.volumeRatio.reduce((a, b) => a + b, 0) / data.volumeRatio.length;
-  const interpretation = avgRatio > 180 ? 'Options activity elevated vs equity - unusual flow signal' : avgRatio < 80 ? 'Options activity subdued - low conviction' : 'Normal options/equity relationship';
+  const interpretation = avgRatio > 120 ? 'Options activity elevated vs equity - unusual flow signal' : avgRatio < 80 ? 'Options activity subdued - low conviction' : 'Normal options/equity relationship';
   svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
 
   const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });

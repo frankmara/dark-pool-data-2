@@ -924,14 +924,9 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const chartBearishCount = heatmapData.cells.filter(c => c.sentiment === 'bearish').length;
   const flowLabel = calculateFlowLabel(chartBullishCount, chartBearishCount);
   
-  // Modeled gamma: Derived from real options data (short gamma is market default ~70% of time)
-  // When flowPercentile is high + bullish, modeled gamma may be long; otherwise short
-  const totalNetGamma = sentiment === 'bullish' && flowPercentile >= 85 
-    ? gammaValue * 1000  // Very strong bullish API data = may be long gamma
-    : -gammaValue * 500; // Default: typically short gamma environment
-  
-  // Use helper function for consistent labeling
-  const { label: modeledGammaLabel, position: modeledGammaPosition } = calculateModeledGammaLabel(totalNetGamma);
+  // Modeled gamma: Use ACTUAL computed gamma from chart data (single source of truth)
+  // This ensures thread text gamma sign matches chart gamma sign exactly
+  // NOTE: totalNetGamma is calculated AFTER gammaDataForThread is generated below
   
   // Conviction label: Only claim conviction when API data shows strong signal
   const convictionLabel = flowPercentile >= 85 
@@ -988,7 +983,9 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const avgRatio = optVolDataForThread.volumeRatio.reduce((a, b) => a + b, 0) / optVolDataForThread.volumeRatio.length;
   // Use chart's interpretation logic for consistency
   const optionsVolumeRatio = Math.floor(avgRatio);
-  const volumeInterpretation = avgRatio > 180 ? 'elevated' : avgRatio < 80 ? 'subdued' : 'normal';
+  // ADV thresholds: >120% = elevated, <80% = subdued, else normal
+  // Note: 165% of ADV should clearly be "elevated", not "normal"
+  const volumeInterpretation = avgRatio > 120 ? 'elevated' : avgRatio < 80 ? 'subdued' : 'normal';
   
   // Generate gamma data - USE POLYGON DATA when available (same logic as chart generation)
   // This ensures thread text matches chart SVG exactly
@@ -1043,6 +1040,11 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     ? gammaDataForThread.gammaFlips[0].strike
     : Math.floor(gammaWall * 0.97);
   
+  // SINGLE SOURCE OF TRUTH: Gamma label derived from ACTUAL chart data
+  // This ensures thread text gamma sign matches chart gamma sign exactly
+  const totalNetGamma = gammaDataForThread.totalGammaExposure || 0;
+  const { label: modeledGammaLabel, position: modeledGammaPosition } = calculateModeledGammaLabel(totalNetGamma);
+  
   if (isOptions) {
     const premiumFormatted = formatNumber(notionalValue);
     const strike = data.strike || 150;
@@ -1062,7 +1064,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     thread = [
       {
         index: 1,
-        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just swept size in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
+        content: `1/8 $${ticker} — What the flow shows vs what traders assume\n\nAn options sweep just hit in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
         type: 'hook',
         chartRef: 'volatilitySmile'
       },
@@ -1124,7 +1126,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     thread = [
       {
         index: 1,
-        content: `1/8 $${ticker} — What institutions are doing vs what traders think is happening\n\nInstitutions just printed size in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
+        content: `1/8 $${ticker} — What the flow shows vs what traders assume\n\nA dark pool print just hit in $${ticker}.\n\nBut here's what the flow actually shows: ${flowLabel}.\n\nThat's not the same as aggressive conviction. Most traders miss this distinction.`,
         type: 'hook',
         chartRef: 'volatilitySmile'
       },
@@ -1231,10 +1233,17 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     optionType: isOptions ? (data.type?.toLowerCase() as 'call' | 'put') : undefined,
     premium: isOptions ? data.premium : undefined,
     delta: isOptions ? data.delta : undefined,
-    breakeven: isOptions ? (data.type?.toLowerCase() === 'put' 
-      ? data.strike - (data.premium || 0) / 100  // PUT: breakeven = strike - premium
-      : data.strike + (data.premium || 0) / 100  // CALL: breakeven = strike + premium
-    ) : undefined,
+    breakeven: isOptions ? (() => {
+      // Breakeven calculation: premium_per_share = total_premium / contracts / 100
+      const contracts = data.contracts || data.size || 1;
+      const totalPremium = data.premium || data.value || 0;
+      const premiumPerShare = totalPremium / contracts / 100;
+      // Sanity check: premium per share should be reasonable (< strike * 0.5)
+      const sanePremium = Math.min(premiumPerShare, (data.strike || 100) * 0.5);
+      return data.type?.toLowerCase() === 'put'
+        ? (data.strike || 0) - sanePremium  // PUT: breakeven = strike - premium_per_share
+        : (data.strike || 0) + sanePremium; // CALL: breakeven = strike + premium_per_share
+    })() : undefined,
     sentiment,
     conviction: conviction as 'high' | 'medium' | 'low',
     venue: isOptions ? undefined : (data.venue || 'DARK')
@@ -1276,31 +1285,39 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const optionsFlowHeatmapSvg = generateOptionsFlowHeatmapSvg(heatmapDataWithTimestamp);
 
   // 2. PUT/CALL OI LADDER - Use callOIByStrike and putOIByStrike from Polygon
+  // STRIKE SANITY CHECK: Only use strikes within ±20% of spot price
   let oiData;
   if (optionsChain && optionsChain.strikes.length > 0) {
     const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
     const nearATMStrikes = sortedStrikes.filter(s => 
-      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.15
+      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.20
     ).slice(0, 15);
-    const strikes = nearATMStrikes.length > 0 ? nearATMStrikes : sortedStrikes.slice(0, 15);
     
-    const callOI = strikes.map(s => optionsChain.callOIByStrike[s] || 0);
-    const putOI = strikes.map(s => optionsChain.putOIByStrike[s] || 0);
-    const totalCallOI = callOI.reduce((a, b) => a + b, 0);
-    const totalPutOI = putOI.reduce((a, b) => a + b, 0);
-    
-    oiData = {
-      ticker,
-      strikes,
-      callOI,
-      putOI,
-      callOIChange: callOI.map(oi => oi * 0.1), // Estimate: 10% change
-      putOIChange: putOI.map(oi => oi * 0.1),
-      spotPrice: optionsChain.spotPrice,
-      putCallRatio: (totalCallOI > 0 && totalPutOI > 0) ? totalPutOI / totalCallOI : null,
-      asOfTimestamp: polygonTimestamp
-    };
-    console.error(`[TestPost] Put/Call OI Ladder using ${strikes.length} strikes from Polygon`);
+    // SANITY CHECK: Require at least 5 strikes within ±20% of spot
+    // If not enough strikes, fall back to mock data (prevents showing wrong chain)
+    if (nearATMStrikes.length < 5) {
+      console.warn(`[TestPost] OI Ladder: Only ${nearATMStrikes.length} strikes within ±20% of spot $${optionsChain.spotPrice} - using mock data`);
+      oiData = { ...generateMockPutCallOIData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+    } else {
+      const strikes = nearATMStrikes;
+      const callOI = strikes.map(s => optionsChain.callOIByStrike[s] || 0);
+      const putOI = strikes.map(s => optionsChain.putOIByStrike[s] || 0);
+      const totalCallOI = callOI.reduce((a, b) => a + b, 0);
+      const totalPutOI = putOI.reduce((a, b) => a + b, 0);
+      
+      oiData = {
+        ticker,
+        strikes,
+        callOI,
+        putOI,
+        callOIChange: callOI.map(oi => oi * 0.1), // Estimate: 10% change
+        putOIChange: putOI.map(oi => oi * 0.1),
+        spotPrice: optionsChain.spotPrice,
+        putCallRatio: (totalCallOI > 0 && totalPutOI > 0) ? totalPutOI / totalCallOI : null,
+        asOfTimestamp: polygonTimestamp
+      };
+      console.error(`[TestPost] Put/Call OI Ladder using ${strikes.length} strikes from Polygon`);
+    }
   } else {
     oiData = { ...generateMockPutCallOIData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
   }
