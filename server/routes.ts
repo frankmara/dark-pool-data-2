@@ -1166,7 +1166,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 6,
-        content: `6/8 — Confirm with flow behavior\n\nOptions volume is ${volumeInterpretation} (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the dark pool print direction.'}`,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is ${volumeInterpretation} (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'Pattern consistent with broader options-flow bias (note: prints alone don\'t confirm direction).'}`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },

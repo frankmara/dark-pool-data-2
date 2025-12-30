@@ -1,0 +1,116 @@
+Even though the validation gate is returning publishable, these are not publish-safe yet because there are still hard contradictions and broken chart labeling that the gate is not catching.
+
+P0 blockers (must fix before posting)
+
+Gamma chart strike range is totally incompatible with spot + every other chart
+
+SPY spot is ~$687 (shown on the IV surface map), but the gamma chart is using strikes ~$500–$590 and then claims “long gamma near $595.” That makes the gamma panel logically unusable and the thread conclusion unsafe. 
+
+Dark Pool Insights - 3 posts p…
+
+ 
+
+Dark Pool Insights - 3 posts p…
+
+Same issue in the second SPY variant. 
+
+Dark Pool Insights - 3 posts p…
+
+This is exactly the kind of thing that should be a blocking error, not a warning.
+
+Options vs Stock Volume chart still renders literal “UNUSUAL” placeholders
+
+This is an automatic “do not publish” until it’s replaced by real values or suppressed. 
+
+Dark Pool Insights - 3 posts p…
+
+You’re still claiming “dark pool print direction”
+
+A dark pool print does not reliably tell buy vs sell direction from print data alone. The copy “This aligns with the dark pool print direction” is an overclaim. 
+
+Dark Pool Insights - 3 posts p…
+
+ 
+
+Dark Pool Insights - 3 posts p…
+
+Correlation matrix labels are duplicated
+
+SPY, QQQ, IWM, etc. appear twice on axes, which looks broken and undermines credibility. 
+
+Dark Pool Insights - 3 posts p…
+
+ 
+
+Dark Pool Insights - 3 posts p…
+
+Post-by-post notes
+Post 1 — SPY (225 shares, ~$155K)
+
+Good:
+
+Thread structure is coherent; skew callout and “protection is expensive” logic reads well. 
+
+Dark Pool Insights - 3 posts p…
+
+Blockers:
+
+Gamma mismatch vs spot: spot ~$687, gamma strikes ~$500–$590, conclusion “long gamma near $595” is invalid. 
+
+Dark Pool Insights - 3 posts p…
+
+ 
+
+Dark Pool Insights - 3 posts p…
+
+“UNUSUAL” placeholders in Options/Stock Volume. 
+
+Dark Pool Insights - 3 posts p…
+
+“Aligns with dark pool print direction” overclaim. 
+
+Dark Pool Insights - 3 posts p…
+
+Correlation matrix duplicated tickers. 
+
+Dark Pool Insights - 3 posts p…
+
+Post 2 — SPY (500 shares, ~$344K) — variant A (Max pain ~$720)
+
+Same issues as above:
+
+Spot ~$687 shown, but gamma strikes are still ~$500–$590 + “long gamma near $595.” 
+
+Dark Pool Insights - 3 posts p…
+
+ 
+
+Dark Pool Insights - 3 posts p…
+
+“UNUSUAL” placeholders persist. 
+
+Dark Pool Insights - 3 posts p…
+
+“Print direction” overclaim persists. 
+
+Dark Pool Insights - 3 posts p…
+
+Correlation labels duplicated. 
+
+Dark Pool Insights - 3 posts p…
+
+Post 3 — SPY (500 shares, ~$344K) — variant B (Max pain ~$700)
+
+Still has the same core problems (gamma mismatch, correlation duplication, print-direction language). 
+
+Dark Pool Insights - 3 posts p…
+
+ 
+
+Dark Pool Insights - 3 posts p…
+
+ 
+
+Dark Pool Insights - 3 posts p…
+
+Also note: having two different max-pain values ($720 vs $700) for the “same” timestamp context is probably fine if the two posts are generated from different snapshots, but it becomes suspicious if both are meant to reflect the same chain snapshot. At minimum, you should ensure all “derived chain analytics” are keyed to a single asOf snapshot per post.

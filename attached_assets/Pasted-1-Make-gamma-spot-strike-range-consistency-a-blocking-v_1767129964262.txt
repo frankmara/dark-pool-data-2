@@ -1,0 +1,81 @@
+1) Make gamma/spot strike-range consistency a blocking validation error (P0)
+
+Problem: SPY spot ~687 but gamma strikes are ~500–590; the thread then makes gamma-based claims (“long gamma near 595”). This must never be publishable.
+Implement:
+
+Add validateGammaRange():
+
+Require spot to be inside [minGammaStrike, maxGammaStrike] OR at least within ±10% of the gamma strike range midpoint.
+
+If not satisfied: errors.push("Gamma strike range does not match spot; gamma panel invalid") and set isPublishable=false.
+
+Add validateCrossPanelStrikeConsistency():
+
+Compare gamma strike range to IV surface strike range and/or OI ladder strike range.
+
+If gamma range differs by >20% from the IV/OI strike center: block publish.
+
+Acceptance: A post like SPY (spot ~687, gamma strikes ~500–590) must fail validation (blocking error), not pass with warnings.
+
+2) Remove “UNUSUAL” placeholder text from Options vs Stock Volume (P0)
+
+Problem: The chart still prints “UNUSUAL” as tick labels/data.
+Implement:
+
+If real data exists: render numeric axis labels + series values.
+
+If data missing/invalid: either
+
+(preferred) suppress the entire chart and replace with a single-line card: “Options/Stock Volume: N/A (data unavailable)”, AND downgrade the narrative sentence that references it, OR
+
+treat as blocking error if the thread copy depends on that metric.
+
+Add validateNoPlaceholderStrings() scanning all rendered SVG/text for forbidden tokens: ["UNUSUAL", "NaN", "undefined", "null"]. If found → blocking error.
+
+Acceptance: No generated SVG/PNG may contain the literal token “UNUSUAL”.
+
+3) Remove/replace “dark pool print direction” claim (P0)
+
+Problem: Copy says “aligns with the dark pool print direction” which is not supported by prints alone.
+Implement:
+
+Replace that sentence with something truth-safe, e.g.:
+
+“This aligns with the broader options-flow bias (note: prints don’t confirm buy/sell direction).”
+
+Add a validation rule: forbid substring "print direction" in dark-pool threads unless you have an explicit direction inference field with a source + confidence.
+
+4) Fix correlation matrix axis duplication (P1)
+
+Problem: Labels repeat (SPY SPY, QQQ QQQ...).
+Implement:
+
+Ensure the correlation matrix uses a de-duplicated ordered ticker list once for rows and once for columns.
+
+Add validateUniqueAxisLabels() for correlation heatmap axes.
+
+5) Tighten validation gate: “publishable” must mean “credible”
+
+Implement new blocking errors:
+
+Gamma range mismatch (above)
+
+Placeholder token detection (above)
+
+Strike grids must be >0 (no negative strikes anywhere)
+
+If any panel is “INSUFFICIENT DATA” then any copy that draws a conclusion from that panel must be suppressed or rewritten (otherwise block publish)
+
+Add tests:
+
+Unit test that injects placeholder “UNUSUAL” into SVG → must block publish
+
+Unit test where spot=687, gammaStrikes=[500..590] → must block publish
+
+Unit test that correlation labels repeat → must block publish
+
+6) Keep narrative consistent with available data (P1)
+
+If a panel is suppressed or downgraded:
+
+auto-remove any downstream claims relying on it (e.g., “options volume elevated X% of ADV” should not appear if that chart/data is missing).

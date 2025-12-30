@@ -1610,12 +1610,25 @@ function getSectorPeers(ticker: string): string[] {
   };
   
   // Find matching sector or use generic market peers
+  const tickerUpper = ticker.toUpperCase();
   for (const [key, peers] of Object.entries(sectorMap)) {
-    if (ticker.toUpperCase() === key || peers.includes(ticker.toUpperCase())) {
-      // Put the target ticker first, then other peers
-      const result = [ticker];
+    if (tickerUpper === key || peers.includes(tickerUpper)) {
+      // Build unique list: target ticker first (in UPPERCASE), then other peers
+      // Use Set to prevent duplicates from case sensitivity issues
+      const seen = new Set<string>();
+      const result: string[] = [];
+      
+      // Add target ticker first (uppercase for consistency)
+      result.push(tickerUpper);
+      seen.add(tickerUpper);
+      
+      // Add other peers, skipping duplicates
       for (const p of peers) {
-        if (p !== ticker && result.length < 6) result.push(p);
+        const pUpper = p.toUpperCase();
+        if (!seen.has(pUpper) && result.length < 6) {
+          result.push(p);
+          seen.add(pUpper);
+        }
       }
       return result;
     }
@@ -1905,7 +1918,10 @@ export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): str
     svg += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" fill-opacity="0.7" rx="1"/>`;
     
     if (isSpike) {
-      svg += `<text x="${x + barWidth/2}" y="${y - 5}" text-anchor="middle" fill="#F59E0B" font-size="7" font-weight="bold" font-family="sans-serif">UNUSUAL</text>`;
+      // Show actual ratio value instead of placeholder "UNUSUAL"
+      const spikeData = data.spikeThresholds.find(s => s.dateIdx === i);
+      const spikeRatio = spikeData ? `${spikeData.ratio.toFixed(0)}%` : 'SPIKE';
+      svg += `<text x="${x + barWidth/2}" y="${y - 5}" text-anchor="middle" fill="#F59E0B" font-size="7" font-weight="bold" font-family="sans-serif">${spikeRatio}</text>`;
     }
   });
 

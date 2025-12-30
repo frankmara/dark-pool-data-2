@@ -84,6 +84,7 @@ const SUSPICIOUS_PATTERNS = [
   /-Infinity/g,
   /\[object Object\]/g,
   /(.)\1{5,}/g,  // 5+ repeated characters (garbled text detection)
+  /\bUNUSUAL\b/g,  // P0: Placeholder text in charts that should be replaced with real values
 ];
 
 const LABEL_CORRUPTION_PATTERNS = [
@@ -196,14 +197,19 @@ export function validateSpotInRange(
   const minStrike = Math.min(...strikes);
   const maxStrike = Math.max(...strikes);
   
-  if (spot < minStrike * 0.7 || spot > maxStrike * 1.3) {
+  // P0 BLOCKER: Spot must be within gamma strike range for any gamma-based claims to be valid
+  // Use stricter ±10% tolerance - if spot is far outside, the gamma panel is logically unusable
+  const rangeMidpoint = (minStrike + maxStrike) / 2;
+  const rangeTolerance = (maxStrike - minStrike) * 0.1; // 10% of range
+  
+  if (spot < minStrike - rangeTolerance || spot > maxStrike + rangeTolerance) {
     return {
       isValid: false,
-      severity: 'warning',
+      severity: 'error',  // UPGRADED FROM WARNING TO BLOCKING ERROR
       code: 'SPOT_OUT_OF_RANGE',
-      message: `Spot price $${spot} is outside chart strike range [$${minStrike}-$${maxStrike}]`,
+      message: `Spot price $${spot} is far outside gamma strike range [$${minStrike}-$${maxStrike}] - gamma panel invalid`,
       field: fieldName,
-      value: { spot, minStrike, maxStrike }
+      value: { spot, minStrike, maxStrike, rangeMidpoint }
     };
   }
   return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
