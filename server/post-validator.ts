@@ -316,6 +316,97 @@ export function validateCopyLogic(
 }
 
 // ============================================================================
+// DARK POOL OVERCLAIM VALIDATOR
+// ============================================================================
+
+export function validateNoPrintDirectionClaim(
+  content: string,
+  eventType: 'OPTIONS_SWEEP' | 'DARK_POOL_PRINT',
+  fieldName: string = 'threadContent'
+): ValidationResult {
+  // Dark pool prints do NOT reliably indicate buy/sell direction from print data alone
+  // Claims like "aligns with print direction" are overclaims that damage credibility
+  if (eventType === 'DARK_POOL_PRINT') {
+    if (/print direction/i.test(content)) {
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'PRINT_DIRECTION_OVERCLAIM',
+        message: 'Dark pool copy claims "print direction" which is not reliably determinable from print data alone',
+        field: fieldName,
+        value: content.substring(0, 200)
+      };
+    }
+    if (/dark pool.*direction/i.test(content) && !/don't confirm direction|doesn't confirm direction/i.test(content)) {
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'PRINT_DIRECTION_OVERCLAIM',
+        message: 'Dark pool copy implies direction knowledge which is an overclaim',
+        field: fieldName,
+        value: content.substring(0, 200)
+      };
+    }
+  }
+  
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+}
+
+// ============================================================================
+// CROSS-PANEL STRIKE CONSISTENCY VALIDATOR
+// ============================================================================
+
+export function validateCrossPanelConsistency(
+  gammaStrikes: number[],
+  ivStrikes: number[],
+  oiStrikes: number[],
+  fieldName: string = 'crossPanel'
+): ValidationResult {
+  // Skip if no gamma strikes
+  if (gammaStrikes.length === 0) {
+    return { isValid: true, severity: 'info', code: 'VALID', message: 'No gamma strikes to validate' };
+  }
+  
+  const gammaCenter = (Math.min(...gammaStrikes) + Math.max(...gammaStrikes)) / 2;
+  
+  // Check IV strikes if available
+  if (ivStrikes.length > 0) {
+    const ivCenter = (Math.min(...ivStrikes) + Math.max(...ivStrikes)) / 2;
+    const deviation = Math.abs(gammaCenter - ivCenter) / gammaCenter;
+    
+    if (deviation > 0.2) { // >20% deviation
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'STRIKE_RANGE_MISMATCH',
+        message: `Gamma strike center ($${gammaCenter.toFixed(0)}) differs >20% from IV strike center ($${ivCenter.toFixed(0)})`,
+        field: fieldName,
+        value: { gammaCenter, ivCenter, deviation: (deviation * 100).toFixed(1) + '%' }
+      };
+    }
+  }
+  
+  // Check OI strikes if available
+  if (oiStrikes.length > 0) {
+    const oiCenter = (Math.min(...oiStrikes) + Math.max(...oiStrikes)) / 2;
+    const deviation = Math.abs(gammaCenter - oiCenter) / gammaCenter;
+    
+    if (deviation > 0.2) { // >20% deviation
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'STRIKE_RANGE_MISMATCH',
+        message: `Gamma strike center ($${gammaCenter.toFixed(0)}) differs >20% from OI strike center ($${oiCenter.toFixed(0)})`,
+        field: fieldName,
+        value: { gammaCenter, oiCenter, deviation: (deviation * 100).toFixed(1) + '%' }
+      };
+    }
+  }
+  
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+}
+
+// ============================================================================
 // SVG CONTENT VALIDATOR
 // ============================================================================
 
@@ -332,6 +423,11 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
     errors.push('SVG contains "undefined"');
   }
   
+  // P0: Check for "UNUSUAL" placeholder text that should be replaced with real values
+  if (/>UNUSUAL</i.test(svgContent) || />.*\bUNUSUAL\b.*</i.test(svgContent)) {
+    errors.push('SVG contains "UNUSUAL" placeholder text - replace with actual values');
+  }
+  
   // Check for garbled labels
   for (const pattern of LABEL_CORRUPTION_PATTERNS) {
     if (pattern.test(svgContent)) {
@@ -343,6 +439,11 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
   // Check for invalid coordinates
   if (/x=\"NaN\"|y=\"NaN\"|cx=\"NaN\"|cy=\"NaN\"/i.test(svgContent)) {
     errors.push('SVG contains NaN coordinates');
+  }
+  
+  // Check for invalid height/width attributes (NaN in dimensions)
+  if (/width=\"NaN\"|height=\"NaN\"/i.test(svgContent)) {
+    errors.push('SVG contains NaN dimensions');
   }
   
   if (errors.length > 0) {
@@ -446,6 +547,10 @@ export function runValidationGate(
     
     const copyCheck = validateCopyLogic(content, skewDirection, `thread[${i}]`);
     if (!copyCheck.isValid) errors.push(copyCheck);
+    
+    // P0: Validate no "print direction" overclaim in dark pool threads
+    const overclaim = validateNoPrintDirectionClaim(content, eventType, `thread[${i}]`);
+    if (!overclaim.isValid) errors.push(overclaim);
   });
   
   // 3. Validate SVG charts
