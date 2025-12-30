@@ -25,6 +25,16 @@ import {
   getIVTermStructure,
   OptionsChainData
 } from "./live-data-service";
+import {
+  runValidationGate,
+  validateSvgContent,
+  formatDollarAmount,
+  formatPercent,
+  safeNumber,
+  safePercentile,
+  EventMetrics,
+  ValidationGateResult
+} from "./post-validator";
 import { 
   generateChartSvg, 
   generateFlowSummarySvg,
@@ -1076,7 +1086,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 3,
-        content: `3/8 — Introduce tension (Vol layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${getOrdinalSuffix(ivPercentile)} percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
+        content: `3/8 — Introduce tension (Vol layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${getOrdinalSuffix(ivPercentile)} percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside exposure'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? (skewDirection === 'put' ? 'Someone is paying up for protection.' : 'Someone is paying up for upside exposure.') : 'Vol isn\'t screaming fear or greed yet.'}`,
         type: 'tension',
         chartRef: 'volatilitySmile'
       },
@@ -1138,7 +1148,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 3,
-        content: `3/8 — Introduce tension (Options layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${getOrdinalSuffix(ivPercentile)} percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside speculation'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? 'Someone is paying up for protection.' : 'Vol isn\'t screaming fear or greed yet.'}`,
+        content: `3/8 — Introduce tension (Options layer)\n\nNow look at the options structure.\n\n${skewDirection === 'put' ? 'Put' : 'Call'}-side skew is at the ${getOrdinalSuffix(ivPercentile)} percentile.\nThat means ${skewDirection === 'put' ? 'downside protection' : 'upside exposure'} is ${ivPercentile > 75 ? 'expensive' : 'not extreme'}.\n\nTranslation:\n${ivPercentile > 75 ? (skewDirection === 'put' ? 'Someone is paying up for protection.' : 'Someone is paying up for upside exposure.') : 'Vol isn\'t screaming fear or greed yet.'}`,
         type: 'tension',
         chartRef: 'volatilitySmile'
       },
@@ -1220,6 +1230,19 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     }
   });
 
+  // Pre-compute breakeven for both flow summary and validation
+  const computedBreakeven: number | undefined = isOptions ? (() => {
+    // Breakeven calculation: premium_per_share = total_premium / contracts / 100
+    const contracts = data.contracts || data.size || 1;
+    const totalPremium = data.premium || data.value || 0;
+    const premiumPerShare = totalPremium / contracts / 100;
+    // Sanity check: premium per share should be reasonable (< strike * 0.5)
+    const sanePremium = Math.min(premiumPerShare, (data.strike || 100) * 0.5);
+    return data.type?.toLowerCase() === 'put'
+      ? (data.strike || 0) - sanePremium  // PUT: breakeven = strike - premium_per_share
+      : (data.strike || 0) + sanePremium; // CALL: breakeven = strike + premium_per_share
+  })() : undefined;
+
   // Generate flow summary card SVG
   const flowSummarySvg = generateFlowSummarySvg({
     ticker,
@@ -1233,17 +1256,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     optionType: isOptions ? (data.type?.toLowerCase() as 'call' | 'put') : undefined,
     premium: isOptions ? data.premium : undefined,
     delta: isOptions ? data.delta : undefined,
-    breakeven: isOptions ? (() => {
-      // Breakeven calculation: premium_per_share = total_premium / contracts / 100
-      const contracts = data.contracts || data.size || 1;
-      const totalPremium = data.premium || data.value || 0;
-      const premiumPerShare = totalPremium / contracts / 100;
-      // Sanity check: premium per share should be reasonable (< strike * 0.5)
-      const sanePremium = Math.min(premiumPerShare, (data.strike || 100) * 0.5);
-      return data.type?.toLowerCase() === 'put'
-        ? (data.strike || 0) - sanePremium  // PUT: breakeven = strike - premium_per_share
-        : (data.strike || 0) + sanePremium; // CALL: breakeven = strike + premium_per_share
-    })() : undefined,
+    breakeven: computedBreakeven,
     sentiment,
     conviction: conviction as 'high' | 'medium' | 'low',
     venue: isOptions ? undefined : (data.venue || 'DARK')
@@ -1383,6 +1396,52 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const optVolData = { ...optVolDataForThread, asOfTimestamp: sessionTimestamp };
   const optionsStockVolumeSvg = generateOptionsStockVolumeSvg(optVolData);
   
+  // ============================================================================
+  // VALIDATION GATE - Block publishing if validation fails
+  // ============================================================================
+  const eventMetrics: EventMetrics = {
+    size: printSize,
+    contracts: isOptions ? (data.contracts || printSize) : undefined,
+    shares: !isOptions ? printSize : undefined,
+    strike: isOptions ? (data.strike || 150) : undefined,
+    expiry: isOptions ? (data.expiry || '2026-01-17') : undefined,
+    breakeven: computedBreakeven,
+    timestamp: session.asOfTime.toISOString(),
+    percentile: safePercentile(flowPercentile),
+    sentimentLabel: sentiment,
+    price: basePrice,
+    notionalValue: notionalValue
+  };
+
+  const threadContent = thread.map((t: { content: string }) => t.content);
+  const svgCharts: Record<string, string> = {
+    chartSvg,
+    flowSummarySvg,
+    volatilitySmileSvg,
+    optionsFlowHeatmapSvg,
+    putCallOILadderSvg,
+    ivTermStructureSvg,
+    gammaExposureSvg,
+    historicalVsImpliedVolSvg,
+    greeksSurfaceSvg,
+    tradeTapeTimelineSvg,
+    sectorCorrelationSvg,
+    maxPainSvg,
+    ivRankHistogramSvg,
+    optionsStockVolumeSvg
+  };
+
+  const validationResult: ValidationGateResult = runValidationGate(
+    ticker,
+    isOptions ? 'OPTIONS_SWEEP' : 'DARK_POOL_PRINT',
+    eventMetrics,
+    threadContent,
+    svgCharts,
+    skewDirection as 'put' | 'call',
+    gammaDataForThread.strikes || [],
+    basePrice
+  );
+
   return {
     ticker,
     eventType: isOptions ? 'options_sweep' : 'dark_pool',
@@ -1423,7 +1482,14 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     maxPainSvg,
     ivRankHistogramSvg,
     optionsStockVolumeSvg,
-    isLiveData
+    isLiveData,
+    // Validation results
+    validation: {
+      isPublishable: validationResult.isPublishable,
+      errors: validationResult.errors,
+      warnings: validationResult.warnings,
+      summary: validationResult.summary
+    }
   };
 }
 

@@ -1287,7 +1287,7 @@ export function generateGreeksSurfaceSvg(data: GreeksSurfaceData): string {
       
       if (isNan || isNaN(val)) {
         svg += `<rect x="${x}" y="${y}" width="${cellWidth - 1}" height="${cellHeight - 1}" fill="#1a1a2e" stroke="#374151" stroke-width="0.5"/>`;
-        svg += `<text x="${x + cellWidth/2}" y="${y + cellHeight/2 + 3}" text-anchor="middle" fill="#6b7280" font-size="7" font-family="sans-serif">NaN</text>`;
+        svg += `<text x="${x + cellWidth/2}" y="${y + cellHeight/2 + 3}" text-anchor="middle" fill="#6b7280" font-size="7" font-family="sans-serif">N/A</text>`;
       } else {
         const normalized = (val - minVal) / (maxVal - minVal);
         const r = Math.floor(normalized * 239 + 16);
@@ -1535,7 +1535,7 @@ export function generateSectorCorrelationSvg(data: SectorCorrelationData): strin
 
       if (isNaN(val)) {
         svg += `<rect x="${x}" y="${y}" width="${cellSize - 2}" height="${cellSize - 2}" fill="#ffffff" fill-opacity="0.1"/>`;
-        svg += `<text x="${x + cellSize/2}" y="${y + cellSize/2 + 3}" text-anchor="middle" fill="#6b7280" font-size="8" font-family="sans-serif">NaN</text>`;
+        svg += `<text x="${x + cellSize/2}" y="${y + cellSize/2 + 3}" text-anchor="middle" fill="#6b7280" font-size="8" font-family="sans-serif">N/A</text>`;
       } else {
         // Color scale: -1 (blue) to +1 (red)
         const normalized = (val + 1) / 2;

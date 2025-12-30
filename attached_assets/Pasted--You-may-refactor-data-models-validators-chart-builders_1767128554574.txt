@@ -1,0 +1,70 @@
+- You may refactor: data models, validators, chart builders, and text template engine.
+- You may add lightweight helper utilities for validation + formatting.
+
+DELIVERABLES
+A) A written audit (in comments or a markdown file) listing every issue you found, where it occurs, and the fix.
+B) Code changes that fix:
+   - NaN leaks in Vega Surface (INSM & TSLA) and anywhere else.
+   - Garbled label “PostTgraedneeTraapteedTimeline” and any other concatenation/positioning bugs.
+   - Copy logic: call-skew should NOT say “paying up for protection” (should be “paying up for upside exposure/speculation”).
+   - Rounding consistency: within a thread, event size should be consistent (e.g., either always rounded or always precise; not both).
+   - Gamma chart axis correctness: strike labels must be strikes, spot must be in-range, and any “pin/long gamma” annotations must be computed from the same domain.
+C) Add a robust validation layer that prevents publishing/export if any validator fails.
+
+ENGINEERING PLAN (REQUIRED IMPLEMENTATION)
+1) Introduce a strict “PostSpec” schema for every generated thread:
+   - symbol, eventType (DARK_POOL_PRINT | OPTIONS_SWEEP)
+   - eventMetrics (size, contracts/shares, strike/expiry, breakeven, timestamp, percentile, sentiment label)
+   - steps[] each with:
+       - copy blocks (title, body, bullets)
+       - chartSpec (type, inputs, computed series, annotations)
+       - validation results
+
+2) Build a Validation Gate (run before render/export):
+   - No NaN/Infinity in any computed series
+   - Required fields present for the eventType (e.g., sweep requires strike/expiry; DP print requires shares/price)
+   - Spot must be within chart x-range
+   - “Max pain” must be within available strikes range; if not, mark as unavailable and change copy accordingly
+   - Percentiles must be [0,100]
+   - Labels must be non-empty, no suspicious substrings (e.g., regex to catch “NaN”, “undefined”, “null”, repeated concatenations)
+
+   If any fails:
+   - Do NOT generate a publishable post
+   - Show a clear UI error: which validator failed and why
+   - Provide a fallback rendering only if explicitly enabled (e.g., “data unavailable” card), but default is to block.
+
+3) Fix Vega Surface NaN issue
+   - Identify why NaN occurs (missing chain greeks, bad merge, divide-by-zero, empty matrix)
+   - Implement a safe builder:
+       - If data missing: render a “Vega Surface Unavailable” card with explanation and skip the chart step OR render with zeros and a watermark “insufficient data”
+       - Never show NaN in the UI
+   - Add unit tests for the vega builder with empty/partial inputs.
+
+4) Fix garbled “Trade Tape Timeline” label issue
+   - Find the source string and how it gets corrupted:
+       - duplicated component render?
+       - absolute-position overlay?
+       - concatenated label due to state update?
+   - Correct by:
+       - single source of truth for chart titles/captions
+       - avoid stacking text layers; use a single caption component
+       - snapshot test the rendered output for this step.
+
+5) Copy logic rules engine (small but strict)
+   - Centralize phrasing decisions:
+       - Put skew -> “downside protection expensive”
+       - Call skew -> “upside exposure/speculation expensive”
+       - If “flow percentile” below threshold -> say “positioning, not panic”
+   - Ensure the correct version is used for each thread based on computed skew type and direction.
+
+6) Consistent formatting
+   - One formatting utility for:
+       - dollars, percents, shares, contracts, dates
+       - rounding policy per metric
+   - Within a thread, the same metric cannot appear with two different rounded values (e.g., $47K vs $46.8K).
+
+7) Export / screenshot cleanliness
+   - Ensure “toast” messages like “Post generated” are not captured in the exported image.
+   - Approach:
+       - Separate “UI notifications layer” from “export canvas”
+       - When exporting, render a clean, notification-free “PostRender” component.
