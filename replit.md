@@ -248,3 +248,11 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
   - Added getOrdinalSuffix() helper for proper ordinal formatting (82nd, 91st, 3rd, etc.)
   - P/C ratio sanity check: Rejects ratios > 10 or < 0.1 as unrealistic data
   - IV Surface Map interpretation: "premium concentration" instead of "flow" (premium volume, not trade flow)
+- **Critical Bug Fixes (Dec 30, 2025 - PDF Audit)**:
+  - **Breakeven calculation**: Now correctly computes premium_per_share = total_premium / contracts / 100, with sanity cap at 50% of strike price
+  - **Gamma sign consistency**: totalNetGamma now derived from gammaDataForThread.totalGammaExposure (actual chart data) instead of sentiment-based calculation
+  - **Strike sanity check**: OI ladder requires at least 5 strikes within ±20% of spot price, otherwise falls back to mock data with console warning
+  - **Flow terminology**: Changed "Bearish OI elevated" to "Bearish flow elevated" since we measure premium concentration not actual OI
+  - **Timestamp timezone**: Flow summary card now uses America/New_York timezone + "ET" suffix for consistency across all charts
+  - **Institutions language**: Thread intros now say "An options sweep/dark pool print just hit" instead of overclaiming institutional action
+  - **ADV thresholds**: Changed from 180% to 120% for "elevated" classification to match industry standards
