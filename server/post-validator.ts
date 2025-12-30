@@ -88,7 +88,7 @@ const SUSPICIOUS_PATTERNS = [
 
 const LABEL_CORRUPTION_PATTERNS = [
   /PostT[a-z]+T[a-z]+/i,  // Garbled labels like "PostTgraedneeTraapteedTimeline"
-  /[A-Z][a-z]+[A-Z][a-z]+[A-Z]/,  // Mixed case corruption
+  // Note: Removed generic CamelCase pattern as it has false positives with valid SVG attributes like "userSpaceOnUse"
 ];
 
 // ============================================================================

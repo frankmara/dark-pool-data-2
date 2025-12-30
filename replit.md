@@ -256,3 +256,13 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
   - **Timestamp timezone**: Flow summary card now uses America/New_York timezone + "ET" suffix for consistency across all charts
   - **Institutions language**: Thread intros now say "An options sweep/dark pool print just hit" instead of overclaiming institutional action
   - **ADV thresholds**: Changed from 180% to 120% for "elevated" classification to match industry standards
+- **Validation Gate System (Dec 30, 2025)**:
+  - Comprehensive PostSpec validation with 14 validators covering NaN detection, percentile validation, copy logic, SVG content, and event-specific requirements
+  - Fixed NaN display in charts: Changed "NaN" to "N/A" in Greeks Surface, Correlation Matrix, and IV Term Structure
+  - Fixed copy logic: Call-skew threads correctly say "upside exposure" instead of "protection"
+  - 78 unit tests for validation system in `server/post-validator.test.ts`
+  - Validation gate integrated into post generation pipeline (`generateTestPost`)
+  - API response now includes `validation` object with `isPublishable`, `errors`, `warnings`, `summary`
+  - Pre-computed breakeven value (`computedBreakeven`) for reuse in both flowSummarySvg and validation
+  - Consistent formatting utilities: `formatDollarAmount()`, `formatPercent()`, `formatShares()`, `formatContracts()`
+  - `VALIDATION_AUDIT.md` documents all issues found, fixes applied, and verification instructions

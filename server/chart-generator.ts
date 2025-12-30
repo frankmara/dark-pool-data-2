@@ -771,12 +771,15 @@ export function generateIVTermStructureSvg(data: IVTermStructureData): string {
 
   data.expiries.forEach((expiry, i) => {
     const x = padding.left + (i / data.expiries.length) * chartWidth + barWidth / 2;
-    const changeBarHeight = (Math.abs(data.ivChanges24h[i]) / maxChange) * (chartHeight / 2 - 15);
+    // Prevent NaN when maxChange is 0
+    const safeMaxChange = maxChange > 0 ? maxChange : 1;
+    const changeBarHeight = (Math.abs(data.ivChanges24h[i]) / safeMaxChange) * (chartHeight / 2 - 15);
+    const safeChangeBarHeight = isNaN(changeBarHeight) || !isFinite(changeBarHeight) ? 0 : changeBarHeight;
     const isPositive = data.ivChanges24h[i] > 0;
     const changeColor = isPositive ? '#EF4444' : '#10B981';
-    const barY = isPositive ? changeY + chartHeight/2 + 10 - changeBarHeight : changeY + chartHeight/2 + 10;
+    const barY = isPositive ? changeY + chartHeight/2 + 10 - safeChangeBarHeight : changeY + chartHeight/2 + 10;
 
-    svg += `<rect x="${x - barWidth/2}" y="${barY}" width="${barWidth}" height="${changeBarHeight}" fill="${changeColor}" fill-opacity="0.9" rx="2"/>`;
+    svg += `<rect x="${x - barWidth/2}" y="${barY}" width="${barWidth}" height="${safeChangeBarHeight}" fill="${changeColor}" fill-opacity="0.9" rx="2"/>`;
     
     // Show change value on bars
     const changeVal = data.ivChanges24h[i];
