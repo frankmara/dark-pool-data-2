@@ -1,199 +1,7 @@
 # Dark Pool Data 2.0 – Institutional Grade Workspace
 
 ## Overview
-A fully automated workstation for institutional-grade dark pool and unusual options research posts on X (Twitter). This workspace includes real-time performance analytics, visual workflow canvas, A/B testing sandbox for posts, and one-click toggles to enable/disable each automation type.
-
-## Project Structure
-```
-├── client/src/
-│   ├── components/         # Reusable UI components
-│   │   ├── app-sidebar.tsx       # Main navigation sidebar
-│   │   ├── data-table.tsx        # Reusable data table with finance styling
-│   │   ├── global-toggle-panel.tsx # Top automation control bar
-│   │   ├── metric-card.tsx       # Stats/metrics display cards
-│   │   ├── status-indicator.tsx  # Status badges and dots
-│   │   └── ui/                   # Shadcn UI components
-│   ├── pages/              # Main application pages
-│   │   ├── live-automations.tsx  # Live Automations Dashboard
-│   │   ├── post-analytics.tsx    # Post Analytics Suite
-│   │   ├── post-constructor.tsx  # Post Constructor & A/B Lab
-│   │   ├── data-feeds.tsx        # Data Feeds & API Connectors
-│   │   ├── workflow-canvas.tsx   # Visual Workflow Canvas
-│   │   ├── ops-center.tsx        # Operations Center (logs & monitoring)
-│   │   ├── settings.tsx          # Settings page
-│   │   └── help.tsx              # Help center
-│   ├── App.tsx             # Main app with routing and state
-│   └── index.css           # Dark finance theme styling
-├── server/
-│   ├── routes.ts           # API endpoints
-│   └── storage.ts          # In-memory storage with seeded data
-├── shared/
-│   └── schema.ts           # Data models and Zod schemas
-└── design_guidelines.md    # Design system documentation
-```
-
-## Key Features
-
-### 1. Global Toggle Panel
-- Master Automation Switch (on/off)
-- Dark Pool Scanner toggle
-- Unusual Options Sweeps toggle  
-- Auto-Thread Posting toggle
-- Analytics Tracking (always on)
-- Live connection status indicator
-
-### 2. Live Automations Dashboard
-- Real-time metrics cards (Dark Pool Signals, Options Sweeps, Posts Today, Engagement Rate)
-- Dark Pool Scanner data table with sentiment and flow indicators
-- Unusual Options Sweeps monitoring
-- Recent posts list with engagement stats
-- Automation status overview
-
-### 3. Post Analytics Suite
-- Comprehensive performance metrics
-- Engagement trend charts
-- Topic performance analysis
-- Best posting times heatmap
-- Post performance data table
-
-### 4. Post Constructor & A/B Lab
-- Rich post composer with character count
-- A/B testing toggle for variant comparison
-- Quick templates for common post types
-- Tag management with suggestions
-- Live preview
-- Predicted performance scores
-
-### 5. Data Feeds & API Connectors
-- Connector management cards
-- Status indicators (connected, pending, disconnected)
-- Available integrations list
-- API key management
-- Rate limit status display
-
-### 6. Visual Workflow Canvas
-- Draggable node-based interface
-- Node library (Triggers, Filters, LLM Agents, Actions)
-- Animated connection lines
-- Zoom controls and minimap
-- Node configuration panel
-
-### 7. Institutional Research Ghostwriter (LLM Agent Node)
-A specialized LLM agent node that generates institutional-grade 4-part X threads from scanner events.
-
-**Inputs:**
-- Raw event JSON from Master Scanner
-- Ticker context (float, SI%, catalysts, analyst targets, insider activity)
-
-**Thread Structure (each tweet < 280 chars):**
-1. **Hook**: Print/sweep size, avg price, venue(s), % of ADV, directional tone
-2. **Context**: Share float, short interest %, recent catalysts, analyst PT vs spot
-3. **Technicals**: Key support/resistance, volume profile POC, order flow implications
-4. **Scenarios**: 2-3 probability-weighted outcomes + conviction level (High/Medium/Low)
-
-**Tone Rules:**
-- Ice-cold institutional voice (Jane Street / Citadel research desk style)
-- Zero retail hype, no emojis in main body
-- Preferred phrases: "notable accumulation", "aggressive distribution", "delta-positive flow", "vanna/charm pressure building"
-
-**Variant Generation:**
-- Generates 3 variants per event: Neutral, Bullish, Bearish
-- Auto-selects best variant based on inferred direction from print/sweep delta + price reaction
-
-### 8. Auto Chart & Flow Summary Engine (LLM Agent Node)
-A visualization node that generates 2 images for every thread:
-
-**Image 1 - TradingView-style Chart (Dark Theme):**
-- Candles/bars (configurable 15m/1h/4h/1D timeframe)
-- Dark pool print marker with price/time and $ size
-- Volume profile showing POC/VAH/VAL
-- EMAs (20/50/200)
-- VWAP session + previous close
-- Key levels (recent high/low, gap fills)
-- Max 5-6 elements for clean visualization
-
-**Image 2 - Flow Summary Card (Branded Dark Pool Data):**
-- Large ticker + print timestamp
-- Print size (USD & shares/contracts)
-- Premium / delta exposure / gamma notional
-- Breakeven levels (if options)
-- Directional arrow + conviction badge (High/Med/Low)
-- Dark background with green/red accents for buy/sell
-
-**Output:** Chart attaches to Tweet 1, Summary Card attaches to Tweet 2 or 3
-
-### 9. Operations Center
-A centralized monitoring and logging dashboard for system health and event tracking.
-
-**Features:**
-- Filterable system event log (last 100 events)
-- Component status filtering (Scanner, LLM Agent, Chart Gen, Poster)
-- Status filtering (success, warning, error)
-- Timestamp, component, and message display
-- Real-time refresh capability
-
-### 10. Health Status Widget
-Added to Live Automations Dashboard for at-a-glance system monitoring.
-
-**Indicators:**
-- Scanner: Green/Yellow/Red status
-- LLM Agent: Green/Yellow/Red status
-- Chart Gen: Green/Yellow/Red status
-- Poster: Green/Yellow/Red status
-
-### 11. Notification & Alerting System
-Enhanced Settings page with channel and alert management.
-
-**Notification Channels:**
-- Email notifications
-- SMS notifications
-- Discord webhooks
-- Add/delete channel management
-
-**Alert Rules:**
-- High-conviction missed posts
-- Follower drop alerts (threshold-based)
-- Low engagement velocity alerts
-- API key expiry warnings
-
-### 12. Global Error Handler & Fallback Logic Nodes
-Workflow utility nodes for resilient automation.
-
-**Error Handler:**
-- Max retries configuration
-- Retry delay settings
-- Fallback routing
-
-**Fallback Logic:**
-- Primary/secondary/tertiary source routing
-- Auto-switch on failure
-- Source priority: UW -> Polygon -> Alpha Vantage
-
-## Design System
-- **Theme**: Dark finance professional (deep navy blues, blacks)
-- **Colors**: 
-  - Positive: Emerald green (#10B981)
-  - Negative: Crimson red (#EF4444)
-  - Primary: Electric blue (#3B82F6)
-- **Typography**: Inter/IBM Plex Sans with JetBrains Mono for data
-- **Components**: Shadcn UI with custom finance styling
-
-## API Endpoints
-- `GET/PATCH /api/settings/automation` - Automation settings
-- `GET/POST/PATCH/DELETE /api/posts` - Posts CRUD
-- `GET/POST /api/dark-pool` - Dark pool data
-- `GET/POST /api/unusual-options` - Options data
-- `GET/POST/PATCH /api/connectors` - API connectors
-- `GET/POST/PATCH/DELETE /api/workflow/nodes` - Workflow nodes
-- `GET/POST/DELETE /api/workflow/connections` - Node connections
-- `GET/POST /api/analytics` - Analytics data
-- `GET/POST /api/logs` - System logs
-- `GET/POST/DELETE /api/notifications/channels` - Notification channels
-- `GET/POST/PATCH /api/notifications/alerts` - Alert rules
-- `GET/PATCH /api/health` - Health snapshots
-
-## Running the Project
-The application runs on port 5000 with `npm run dev`. The Express server handles both the API and serves the Vite frontend.
+A fully automated workstation for institutional-grade dark pool and unusual options research posts on X (Twitter). This project aims to provide real-time performance analytics, a visual workflow canvas, an A/B testing sandbox for posts, and one-click toggles to enable/disable various automation types. The business vision is to deliver an institutional-grade tool for financial market research and social media dissemination.
 
 ## User Preferences
 - Dark theme only (professional trading workstation aesthetic)
@@ -201,68 +9,42 @@ The application runs on port 5000 with `npm run dev`. The Express server handles
 - Monospace fonts for numerical data
 - Real-time status indicators with pulsing animations
 
-## Recent Changes (Dec 29, 2025)
-- Integrated all frontend pages with backend APIs using react-query
-- Global toggle panel now persists automation settings to backend
-- Master toggle cascade logic: OFF disables all, ON re-enables Dark Pool and Options scanners
-- Workflow nodes seeded with 8 demo nodes displayed on canvas (including Ghostwriter)
-- Comprehensive data-testid attributes added across all components
-- All pages verified working through automated end-to-end testing
-- Added Institutional Research Ghostwriter LLM agent node with full configuration panel
-- Node library updated with LLM Agents category (Ghostwriter, Thread Composer, Signal Analyzer)
-- Ghostwriter config includes: inputs tab, thread structure tab, tone rules tab
-- Real API connector tests implemented for all 6 data providers
-- Auto-test all connectors on Data Feeds page load
-- **Institutional Chart Enhancements**:
-  - SessionContext utility for synchronized timestamps (createSessionContext, formatSessionTimestamp, generateSessionCandles)
-  - All 5 chart types now include "As of: [timestamp] ET" labels
-  - INTERPRETATION annotation boxes with contextual analysis on each chart
-  - Enhanced legends with clear color coding and element explanations
-  - Source attribution footers (e.g., "DARK POOL DATA | Source: Options Analytics")
-  - 5-post thread format with institutional metrics: ADV %, VWAP delta, modeled gamma positioning, IV percentiles, probability scenarios
-- **Unusual Whales API Integration Fixed**:
-  - Dark Pool endpoint: `/api/darkpool/recent` - returns live prints (ticker, size, price, premium, executed_at)
-  - Options Flow endpoint: `/api/option-trades/flow-alerts` - returns live alerts (ticker, total_premium, total_size, strike, expiry, type)
-  - Field parsing updated to match actual API response structure
-  - Zero mock data - all posts marked with `isLiveData: true` when sourced from live APIs
-  - Returns 503 error when no live API data available instead of generating fake data
-- **Credibility & Terminology Fixes (Dec 29, 2025)**:
-  - Fixed PUT breakeven calculation: PUT = strike - premium, CALL = strike + premium
-  - Renamed "Options Flow Heatmap" to "IV Surface Map (15-min delayed)" - Polygon can't provide flow data
-  - Removed ALL "dealer" terminology from charts - now uses "Modeled Gamma" consistently
-  - Chart labels: "Net Dealer Gamma" → "Net Gamma by Strike (modeled, 15-min delayed)"
-  - Gauge label: "DEALER NET" → "NET GAMMA"
-  - Max Pain subtitle: "Dealer Neutrality Point" → "Options Expiry Pin Level"
-  - P/C ratio: Added null handling, displays "N/A" with "INSUFFICIENT DATA" when data unavailable
-  - Terminology: "Call-heavy flow" → "Call-heavy OI" (structural data, not trade flow)
-  - Correlation matrix: Uses real sector peer tickers (GLD, GDX, SIL for precious metals, etc.) instead of "PEER1", "PEER2"
-  - Default correlation peers: Replaced VIX with XLF (VIX is not a correlation peer)
-  - Thread text: "dealer gamma + options flow" → "gamma mechanics + options positioning"
-- **Single Source of Truth Architecture (Dec 29, 2025)**:
-  - Chart data now generated BEFORE thread text to ensure consistency
-  - Thread text extracts key values FROM chart data (maxPainLevel, gammaWall, optionsVolumeRatio)
-  - gammaWall: Extracted from gamma chart's highest absolute net gamma strike
-  - maxPainLevel: Extracted from maxPainData.maxPainStrike (calculated by chart generator)
-  - optionsVolumeRatio: Extracted from avgRatio of volume chart data, uses same thresholds as chart interpretation
-  - volumeInterpretation: "elevated" (>180%), "subdued" (<80%), or "normal" - matches chart INTERPRETATION label
-  - Added getOrdinalSuffix() helper for proper ordinal formatting (82nd, 91st, 3rd, etc.)
-  - P/C ratio sanity check: Rejects ratios > 10 or < 0.1 as unrealistic data
-  - IV Surface Map interpretation: "premium concentration" instead of "flow" (premium volume, not trade flow)
-- **Critical Bug Fixes (Dec 30, 2025 - PDF Audit)**:
-  - **Breakeven calculation**: Now correctly computes premium_per_share = total_premium / contracts / 100, with sanity cap at 50% of strike price
-  - **Gamma sign consistency**: totalNetGamma now derived from gammaDataForThread.totalGammaExposure (actual chart data) instead of sentiment-based calculation
-  - **Strike sanity check**: OI ladder requires at least 5 strikes within ±20% of spot price, otherwise falls back to mock data with console warning
-  - **Flow terminology**: Changed "Bearish OI elevated" to "Bearish flow elevated" since we measure premium concentration not actual OI
-  - **Timestamp timezone**: Flow summary card now uses America/New_York timezone + "ET" suffix for consistency across all charts
-  - **Institutions language**: Thread intros now say "An options sweep/dark pool print just hit" instead of overclaiming institutional action
-  - **ADV thresholds**: Changed from 180% to 120% for "elevated" classification to match industry standards
-- **Validation Gate System (Dec 30, 2025)**:
-  - Comprehensive PostSpec validation with 14 validators covering NaN detection, percentile validation, copy logic, SVG content, and event-specific requirements
-  - Fixed NaN display in charts: Changed "NaN" to "N/A" in Greeks Surface, Correlation Matrix, and IV Term Structure
-  - Fixed copy logic: Call-skew threads correctly say "upside exposure" instead of "protection"
-  - 78 unit tests for validation system in `server/post-validator.test.ts`
-  - Validation gate integrated into post generation pipeline (`generateTestPost`)
-  - API response now includes `validation` object with `isPublishable`, `errors`, `warnings`, `summary`
-  - Pre-computed breakeven value (`computedBreakeven`) for reuse in both flowSummarySvg and validation
-  - Consistent formatting utilities: `formatDollarAmount()`, `formatPercent()`, `formatShares()`, `formatContracts()`
-  - `VALIDATION_AUDIT.md` documents all issues found, fixes applied, and verification instructions
+## System Architecture
+The application features a client-server architecture with a React frontend (`client/`) and an Express.js backend (`server/`). Data models and Zod schemas are shared (`shared/`).
+
+**UI/UX Decisions:**
+- **Theme**: Dark finance professional aesthetic using deep navy blues and blacks.
+- **Color Palette**: Emerald green for positive, Crimson red for negative, Electric blue as primary.
+- **Typography**: Inter/IBM Plex Sans for text, JetBrains Mono for data.
+- **Components**: Shadcn UI with custom finance-specific styling.
+- **Layouts**: Information-dense with real-time status indicators.
+
+**Technical Implementations & Features:**
+- **Global Toggle Panel**: Master switch for automation, controlling Dark Pool Scanner, Unusual Options Sweeps, and Auto-Thread Posting.
+- **Live Automations Dashboard**: Displays real-time metrics, scanner data, options monitoring, and recent post engagement.
+- **Post Analytics Suite**: Comprehensive performance metrics, engagement trends, topic analysis, and best posting times.
+- **Post Constructor & A/B Lab**: Rich post composer with A/B testing capabilities, templates, tag management, and live preview.
+- **Data Feeds & API Connectors**: Manages connections to external data sources with status indicators and API key management.
+- **Visual Workflow Canvas**: Node-based interface for designing automation workflows with draggable nodes (Triggers, Filters, LLM Agents, Actions).
+- **Institutional Research Ghostwriter (LLM Agent)**: Generates institutional-grade 4-part X threads from scanner events using specific tone rules and variant generation (Neutral, Bullish, Bearish).
+- **Auto Chart & Flow Summary Engine (LLM Agent)**: Generates two images per thread: a TradingView-style chart and a branded flow summary card. Charts include candles, volume profile, EMAs, and key levels.
+- **Operations Center**: Centralized dashboard for system health monitoring, filterable event logs, and component status.
+- **Health Status Widget**: Provides at-a-glance system health for Scanner, LLM Agent, Chart Gen, and Poster.
+- **Notification & Alerting System**: Configurable email, SMS, and Discord notifications with customizable alert rules.
+- **Global Error Handler & Fallback Logic Nodes**: Workflow utilities for resilient automation with retry configurations and primary/secondary source routing.
+- **Validation Gate System**: Comprehensive PostSpec validation with multiple validators for data integrity, consistency, and publishability, including 102 unit tests.
+
+**System Design Choices:**
+- Emphasis on real-time data and actionable insights.
+- Modularity through reusable UI components and a node-based workflow system.
+- Robust error handling and fallback mechanisms for reliability.
+- Strict validation rules for data consistency and credibility in generated content.
+- Single Source of Truth Architecture: Chart data is generated before thread text, with thread text extracting key values directly from chart data to ensure consistency.
+
+## External Dependencies
+- **Twitter API**: For posting automated threads.
+- **Unusual Whales API**: For Dark Pool and Options Flow data.
+- **Polygon API**: Data provider.
+- **Alpha Vantage API**: Data provider.
+- **TradingView**: Style inspiration for chart generation.
+- **Shadcn UI**: Frontend component library.

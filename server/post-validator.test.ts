@@ -450,6 +450,23 @@ testGroup('runValidationGate', () => {
 
   assert(overclaimResult.isPublishable === false, 'blocks dark pool overclaim');
   assert(overclaimResult.errors.some(e => e.code === 'PRINT_DIRECTION_OVERCLAIM'), 'identifies overclaim error');
+
+  // Test with misaligned cross-panel strikes
+  const misalignedResult = runValidationGate(
+    'AAPL',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    validCharts,
+    'call',
+    [140, 145, 150, 155, 160],  // gamma strikes (center ~150)
+    150,                        // spot
+    [200, 210, 220, 230],       // IV strikes (center ~215, >20% off)
+    []
+  );
+
+  assert(misalignedResult.isPublishable === false, 'blocks misaligned cross-panel strikes');
+  assert(misalignedResult.errors.some(e => e.code === 'STRIKE_RANGE_MISMATCH'), 'identifies strike mismatch error');
 });
 
 // ============================================================================

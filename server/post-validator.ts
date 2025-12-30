@@ -526,7 +526,9 @@ export function runValidationGate(
   svgCharts: Record<string, string>,
   skewDirection: 'put' | 'call',
   strikes: number[] = [],
-  spot: number = 0
+  spot: number = 0,
+  ivStrikes: number[] = [],
+  oiStrikes: number[] = []
 ): ValidationGateResult {
   const errors: ValidationResult[] = [];
   const warnings: ValidationResult[] = [];
@@ -577,7 +579,15 @@ export function runValidationGate(
     }
   }
   
-  // 5. Build summary
+  // 5. Validate cross-panel strike consistency (gamma vs IV vs OI)
+  if (strikes.length > 0 || ivStrikes.length > 0 || oiStrikes.length > 0) {
+    const crossPanelCheck = validateCrossPanelConsistency(strikes, ivStrikes, oiStrikes);
+    if (!crossPanelCheck.isValid) {
+      errors.push(crossPanelCheck);
+    }
+  }
+  
+  // 6. Build summary
   const isPublishable = errors.length === 0;
   const summary = isPublishable 
     ? `Validation passed with ${warnings.length} warning(s)`
