@@ -19,6 +19,8 @@ import {
   validateSvgContent,
   validateOptionsSwepEvent,
   validateDarkPoolEvent,
+  validateNoPrintDirectionClaim,
+  validateCrossPanelConsistency,
   runValidationGate,
   formatDollarAmount,
   formatPercent,
@@ -428,6 +430,156 @@ testGroup('runValidationGate', () => {
   );
 
   assert(nanResult.isPublishable === false, 'blocks post with NaN in SVG');
+
+  // Test with print direction overclaim
+  const overclaim = [
+    'This aligns with the dark pool print direction.',
+    'More content.'
+  ];
+
+  const overclaimResult = runValidationGate(
+    'AAPL',
+    'DARK_POOL_PRINT',
+    validMetrics,
+    overclaim,
+    validCharts,
+    'call',
+    [140, 145, 150, 155, 160],
+    150
+  );
+
+  assert(overclaimResult.isPublishable === false, 'blocks dark pool overclaim');
+  assert(overclaimResult.errors.some(e => e.code === 'PRINT_DIRECTION_OVERCLAIM'), 'identifies overclaim error');
+});
+
+// ============================================================================
+// PRINT DIRECTION OVERCLAIM TESTS
+// ============================================================================
+
+testGroup('validateNoPrintDirectionClaim', () => {
+  // Should fail for dark pool with "print direction"
+  const overclaim1 = validateNoPrintDirectionClaim(
+    'This aligns with the dark pool print direction.',
+    'DARK_POOL_PRINT'
+  );
+  assert(overclaim1.isValid === false, 'rejects "print direction" in dark pool');
+  assert(overclaim1.code === 'PRINT_DIRECTION_OVERCLAIM', 'returns correct error code');
+
+  // Should pass for dark pool with appropriate disclaimer
+  const disclaimer = validateNoPrintDirectionClaim(
+    'Pattern consistent with broader options-flow bias (note: prints alone don\'t confirm direction).',
+    'DARK_POOL_PRINT'
+  );
+  assert(disclaimer.isValid === true, 'accepts disclaimed direction reference');
+
+  // Should pass for options sweep (different event type)
+  const optionsSweep = validateNoPrintDirectionClaim(
+    'This aligns with the dark pool print direction.',
+    'OPTIONS_SWEEP'
+  );
+  assert(optionsSweep.isValid === true, 'allows direction claim for options sweep');
+
+  // Should fail for "dark pool direction" without disclaimer
+  const impliedDirection = validateNoPrintDirectionClaim(
+    'The dark pool direction suggests bullish sentiment.',
+    'DARK_POOL_PRINT'
+  );
+  assert(impliedDirection.isValid === false, 'rejects implied direction claim');
+
+  // Should pass for normal dark pool content
+  const normalContent = validateNoPrintDirectionClaim(
+    'A dark pool print just hit in $AAPL. Notable accumulation pattern.',
+    'DARK_POOL_PRINT'
+  );
+  assert(normalContent.isValid === true, 'accepts normal dark pool content');
+});
+
+// ============================================================================
+// CROSS-PANEL STRIKE CONSISTENCY TESTS
+// ============================================================================
+
+testGroup('validateCrossPanelConsistency', () => {
+  // Should pass when strike ranges align
+  const aligned = validateCrossPanelConsistency(
+    [140, 145, 150, 155, 160],  // gamma
+    [142, 148, 152, 158],       // IV (similar center)
+    [141, 146, 151, 156]        // OI (similar center)
+  );
+  assert(aligned.isValid === true, 'accepts aligned strike ranges');
+
+  // Should fail when gamma and IV strike centers differ >20%
+  const misaligned = validateCrossPanelConsistency(
+    [140, 145, 150, 155, 160],  // gamma (center ~150)
+    [200, 210, 220, 230],       // IV (center ~215, >20% off)
+    []
+  );
+  assert(misaligned.isValid === false, 'rejects misaligned gamma vs IV');
+  assert(misaligned.code === 'STRIKE_RANGE_MISMATCH', 'returns correct error code');
+
+  // Should fail when gamma and OI strike centers differ >20%
+  const misalignedOI = validateCrossPanelConsistency(
+    [140, 145, 150, 155, 160],  // gamma (center ~150)
+    [],
+    [80, 90, 100, 110]          // OI (center ~95, >20% off)
+  );
+  assert(misalignedOI.isValid === false, 'rejects misaligned gamma vs OI');
+
+  // Should pass with no gamma strikes
+  const noGamma = validateCrossPanelConsistency([], [100, 110, 120], [95, 105]);
+  assert(noGamma.isValid === true, 'accepts empty gamma strikes');
+
+  // Should pass with only gamma strikes
+  const onlyGamma = validateCrossPanelConsistency([140, 150, 160], [], []);
+  assert(onlyGamma.isValid === true, 'accepts only gamma strikes');
+});
+
+// ============================================================================
+// SVG PLACEHOLDER DETECTION TESTS
+// ============================================================================
+
+testGroup('validateSvgContent with placeholders', () => {
+  // Should reject "UNUSUAL" placeholder
+  const unusualPlaceholder = validateSvgContent(
+    '<svg><text>UNUSUAL</text></svg>',
+    'volumeChart'
+  );
+  assert(unusualPlaceholder.isValid === false, 'rejects UNUSUAL placeholder');
+  assert(unusualPlaceholder.message?.includes('UNUSUAL'), 'error mentions UNUSUAL');
+
+  // Should reject NaN dimensions
+  const nanDimensions = validateSvgContent(
+    '<svg width="NaN" height="NaN"><rect /></svg>',
+    'chart'
+  );
+  assert(nanDimensions.isValid === false, 'rejects NaN dimensions');
+  assert(nanDimensions.message?.includes('NaN dimensions'), 'error mentions NaN dimensions');
+
+  // Should accept valid percentage labels
+  const validPercentage = validateSvgContent(
+    '<svg><text>235%</text></svg>',
+    'volumeChart'
+  );
+  assert(validPercentage.isValid === true, 'accepts percentage values');
+});
+
+// ============================================================================
+// SPOT OUT OF RANGE (BLOCKING ERROR) TESTS
+// ============================================================================
+
+testGroup('validateSpotInRange (blocking)', () => {
+  // Should pass when spot is within range
+  const inRange = validateSpotInRange(150, [140, 145, 150, 155, 160]);
+  assert(inRange.isValid === true, 'accepts spot within range');
+
+  // Should FAIL (error, not warning) when spot is far outside range
+  const farOutside = validateSpotInRange(50, [140, 145, 150, 155, 160]);
+  assert(farOutside.isValid === false, 'rejects spot far outside range');
+  assert(farOutside.severity === 'error', 'returns blocking error severity');
+  assert(farOutside.code === 'SPOT_OUT_OF_RANGE', 'returns correct error code');
+
+  // Should pass when spot is just slightly outside (within tolerance)
+  const slightlyOutside = validateSpotInRange(138, [140, 145, 150, 155, 160]);
+  assert(slightlyOutside.isValid === true, 'accepts spot slightly outside range (within tolerance)');
 });
 
 // ============================================================================
