@@ -1907,6 +1907,10 @@ interface OptionsStockVolumeData {
   asOfTimestamp?: string;
 }
 
+function sanitizePlaceholderLabel(label: string): string {
+  return label.replace(/\b(?:UW|UNUSUAL)\b/gi, '').trim();
+}
+
 export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): string {
   const width = 800;
   const height = 380;
@@ -1914,15 +1918,14 @@ export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): str
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  const hasPlaceholderLabel = [...data.dates, ...(data.spikeThresholds || []).map(s => String(s.ratio))]
-    .some(label => /\bUW\b|UNUSUAL/i.test(label));
-  if (hasPlaceholderLabel) {
-    throw new ChartDataError('SVG_PLACEHOLDER_OR_NAN', 'optionsStockVolume', 'Placeholder label detected in options/stock volume data');
-  }
-
   if (data.volumeRatio.some(ratio => !isFinite(ratio))) {
     throw new ChartDataError('SVG_PLACEHOLDER_OR_NAN', 'optionsStockVolume', 'Volume ratio contains non-finite values');
   }
+
+  const cleanedDates = data.dates.map(date => {
+    const sanitized = sanitizePlaceholderLabel(date);
+    return sanitized.length > 0 ? sanitized : '';
+  });
 
   const maxPremium = Math.max(...data.optionsPremium) * 1.1;
   const maxRatio = Math.max(...data.volumeRatio) * 1.1;
@@ -1946,10 +1949,15 @@ export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): str
     svg += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" fill-opacity="0.7" rx="1"/>`;
     
     if (isSpike) {
-      // Show actual ratio value instead of placeholder "UNUSUAL"
       const spikeData = data.spikeThresholds.find(s => s.dateIdx === i);
-      const spikeRatio = spikeData ? `${spikeData.ratio.toFixed(0)}%` : 'SPIKE';
-      svg += `<text x="${x + barWidth/2}" y="${y - 5}" text-anchor="middle" fill="#F59E0B" font-size="7" font-weight="bold" font-family="sans-serif">${spikeRatio}</text>`;
+      const ratioValue = spikeData && isFinite(Number(spikeData.ratio))
+        ? Number(spikeData.ratio)
+        : data.volumeRatio[i];
+
+      if (isFinite(ratioValue)) {
+        const spikeRatio = `${ratioValue.toFixed(0)}%`;
+        svg += `<text x="${x + barWidth/2}" y="${y - 5}" text-anchor="middle" fill="#F59E0B" font-size="7" font-weight="bold" font-family="sans-serif">${spikeRatio}</text>`;
+      }
     }
   });
 
@@ -1970,8 +1978,8 @@ export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): str
   }
 
   // X-axis labels
-  const labelInterval = Math.floor(data.dates.length / 6);
-  data.dates.forEach((date, i) => {
+  const labelInterval = Math.max(1, Math.floor(data.dates.length / 6));
+  cleanedDates.forEach((date, i) => {
     if (i % labelInterval === 0) {
       const x = padding.left + (i / data.dates.length) * chartWidth;
       svg += `<text x="${x}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">${date}</text>`;
@@ -1991,7 +1999,7 @@ export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): str
 
   // Interpretation - thresholds: >120% = elevated, <80% = subdued, else normal
   const avgRatio = data.volumeRatio.reduce((a, b) => a + b, 0) / data.volumeRatio.length;
-  const interpretation = avgRatio > 120 ? 'Options activity elevated vs equity - unusual flow signal' : avgRatio < 80 ? 'Options activity subdued - low conviction' : 'Normal options/equity relationship';
+  const interpretation = avgRatio > 120 ? 'Options activity elevated vs equity - heightened flow signal' : avgRatio < 80 ? 'Options activity subdued - low conviction' : 'Normal options/equity relationship';
   svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
 
   const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
