@@ -18,9 +18,10 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { 
-  fetchUnusualWhalesData, 
+  fetchUnusualWhalesData,
   getEnrichedTickerData,
   fetchPolygonOptionsChain,
+  fetchPolygonQuote,
   getIVSmileData,
   getIVTermStructure,
   OptionsChainData
@@ -828,8 +829,11 @@ export async function registerRoutes(
           details: "The API returned no dark pool or options flow data. This may be due to market hours, API rate limits, or connectivity issues."
         });
       }
-      
+
       const post = await generateTestPost(dataItem, isLiveData);
+      if ((post as any).skipped) {
+        return res.status(202).json(post);
+      }
       const created = await storage.createTestPost(post);
       
       await storage.updateTestModeSettings({ lastGenerated: new Date().toISOString() });
@@ -877,8 +881,14 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const asOfTimestamp = formatSessionTimestamp(session.asOfTime, 'short');
 
   const extraValidationErrors: ValidationResult[] = [];
+  const preflightErrors: ValidationResult[] = [];
 
   const ticker = data.ticker;
+
+  const polygonQuote = await fetchPolygonQuote(ticker);
+  const fallbackSpot = parseFloat(data.underlying_price || data.underlyingPrice || data.spot || '') || 0;
+  const strikeAsSpot = data.strike && isFinite(Number(data.strike)) ? Number(data.strike) : 0;
+  const eventSpot = polygonQuote?.price || fallbackSpot || strikeAsSpot || 100;
   
   // Fetch REAL Polygon options chain data for the 4 institutional charts
   const optionsChain = await fetchPolygonOptionsChain(ticker);
@@ -948,7 +958,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   // TRUTH GATE: Generate chart data FIRST, then derive flowLabel from actual chart cells
   // This ensures text claims match chart labels exactly (no divergence possible)
   // Use `price` (defined earlier) instead of `basePrice` (defined later)
-  const heatmapData = generateMockOptionsFlowData(ticker, price, sentiment as 'bullish' | 'bearish' | 'neutral');
+  const heatmapData = generateMockOptionsFlowData(ticker, eventSpot, sentiment as 'bullish' | 'bearish' | 'neutral');
   const chartBullishCount = heatmapData.cells.filter(c => c.sentiment === 'bullish').length;
   const chartBearishCount = heatmapData.cells.filter(c => c.sentiment === 'bearish').length;
   const flowLabel = calculateFlowLabel(chartBullishCount, chartBearishCount);
@@ -963,9 +973,9 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     : 'cautiously';
   
   // Watch/Confirm/Invalidate levels (specific, falsifiable)
-  const confirmLevel = Math.floor(price * 1.03);  // +3% confirms bullish
-  const invalidateLevel = Math.floor(price * 0.97); // -3% invalidates
-  const watchLevel = Math.floor(price * 1.01);    // +1% first signal
+  const confirmLevel = Math.floor(eventSpot * 1.03);  // +3% confirms bullish
+  const invalidateLevel = Math.floor(eventSpot * 0.97); // -3% invalidates
+  const watchLevel = Math.floor(eventSpot * 1.01);    // +1% first signal
   
   let thread: any[];
   
@@ -1023,7 +1033,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
 
   // P0 FIX: Use the EVENT price for strike range filtering, not Polygon's cached spotPrice
   // Polygon spotPrice may be stale or from wrong symbol cache
-  const eventSpotPrice = price; // From the actual event data
+  const eventSpotPrice = eventSpot; // From the actual underlying spot
   const eventExpiry = isOptions ? data.expiry : undefined;
   
   if (optionsChain && optionsChain.strikes.length > 0) {
@@ -1031,14 +1041,22 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
     
     // P0 FIX: Filter strikes based on EVENT spot price, not optionsChain.spotPrice
-    const nearATMStrikes = sortedStrikes.filter(s => 
+    const nearATMStrikes = sortedStrikes.filter(s =>
       Math.abs(s - eventSpotPrice) / eventSpotPrice < 0.15
     ).slice(0, 20);
-    
+
     // SANITY CHECK: If no strikes within ±15% of EVENT spot, the Polygon data may be wrong
     // Fall back to mock data rather than show mismatched strikes
     if (nearATMStrikes.length < 5) {
       console.warn(`[TestPost] Gamma: Only ${nearATMStrikes.length} Polygon strikes within ±15% of event spot $${eventSpotPrice.toFixed(2)} - using mock data`);
+      preflightErrors.push({
+        isValid: false,
+        severity: 'error',
+        code: 'STRIKE_COVERAGE_INSUFFICIENT',
+        message: `Insufficient strikes near spot (${nearATMStrikes.length}) to build gamma chart`,
+        field: 'gammaExposure',
+        value: { nearATMStrikes }
+      });
       gammaDataForThread = generateMockGammaExposureData(ticker, eventSpotPrice);
     } else {
       const strikes = nearATMStrikes;
@@ -1235,7 +1253,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   };
 
   // Generate chart SVG with session context for synchronized timestamps
-  const basePrice = isOptions ? (data.strike || 150) : (parseFloat(data.price) || 150);
+  const basePrice = isOptions ? eventSpot : (parseFloat(data.price) || eventSpot || 150);
   const candles = generateSessionCandles(basePrice, 50, session, '15m');
   
   // Determine chart annotation based on sentiment
@@ -1313,7 +1331,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     const realSmileData = targetExpiry ? getIVSmileData(optionsChain, targetExpiry) : [];
 
     if (!targetExpiry || !optionsChain.expiries.includes(targetExpiry) || realSmileData.length === 0) {
-      extraValidationErrors.push({
+      preflightErrors.push({
         isValid: false,
         severity: 'error',
         code: 'EXPIRY_DATA_MISSING',
@@ -1337,7 +1355,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   } else if (!isOptions) {
     smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
   } else {
-    extraValidationErrors.push({
+    preflightErrors.push({
       isValid: false,
       severity: 'error',
       code: 'EXPIRY_DATA_MISSING',
@@ -1487,6 +1505,17 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   // ============================================================================
   // VALIDATION GATE - Block publishing if validation fails
   // ============================================================================
+  if (preflightErrors.length > 0) {
+    return {
+      skipped: true,
+      ticker,
+      eventType: isOptions ? 'OPTIONS_SWEEP' : 'DARK_POOL_PRINT',
+      reasons: preflightErrors,
+      isLiveData,
+      generatedAt: session.asOfTime.toISOString()
+    };
+  }
+
   const eventMetrics: EventMetrics = {
     size: printSize,
     contracts: isOptions ? (data.contracts || printSize) : undefined,

@@ -669,7 +669,13 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
  */
 export function validateIvUnitScale(svgContent: string, fieldName: string = 'ivUnits'): ValidationResult {
   if (!svgContent) {
-    return { isValid: false, severity: 'error', code: 'INVALID_IV_UNITS', message: 'Missing SVG content', field: fieldName };
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'EXPIRY_DATA_MISSING',
+      message: 'Missing SVG content for IV chart',
+      field: fieldName
+    };
   }
 
   const percentMatches = Array.from(svgContent.matchAll(/([0-9]{1,4}(?:\.[0-9]+)?)%/g));

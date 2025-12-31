@@ -35,6 +35,7 @@ import {
   safePercentile,
   EventMetrics
 } from './post-validator';
+import { generateOptionsStockVolumeSvg } from './chart-generator';
 
 // ============================================================================
 // TEST UTILITIES
@@ -209,6 +210,26 @@ testGroup('validateSvgContent', () => {
 
   const nanCoordSvg = '<svg><circle cx="NaN" cy="100" r="5"/></svg>';
   assert(validateSvgContent(nanCoordSvg, 'test').isValid === false, 'rejects SVG with NaN coords');
+});
+
+testGroup('validateIvUnitScale', () => {
+  const missing = validateIvUnitScale('', 'volatilitySmile');
+  assert(missing.isValid === false, 'flags missing SVG content');
+  assert(missing.code === 'EXPIRY_DATA_MISSING', 'uses expiry missing code for empty SVG');
+});
+
+testGroup('optionsStockVolumeSvg placeholders', () => {
+  const svg = generateOptionsStockVolumeSvg({
+    ticker: 'TEST',
+    dates: ['1/1', 'UNUSUAL'],
+    optionsPremium: [1000000, 1200000],
+    volumeRatio: [150, 240],
+    spikeThresholds: [{ dateIdx: 1, ratio: 'UNUSUAL' as any }]
+  });
+
+  assert(/UNUSUAL/.test(svg) === false, 'does not emit UNUSUAL placeholder text');
+  const validation = validateSvgContent(svg, 'optionsStockVolume');
+  assert(validation.isValid === true, 'sanitized SVG passes placeholder validation');
 });
 
 // ============================================================================
@@ -729,6 +750,40 @@ testGroup('runValidationGate', () => {
   );
   assert(unusualSvg.isPublishable === false, 'blocks UNUSUAL placeholder in SVG');
   assert(unusualSvg.errors.some(e => e.code === 'SVG_PLACEHOLDER_OR_NAN'), 'flags UNUSUAL placeholder code');
+
+  const missingSmile = runValidationGate(
+    'QQQ',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    { volatilitySmile: '' },
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    { volatilitySmile: '2025-01-17' },
+    'long'
+  );
+  assert(missingSmile.isPublishable === false, 'blocks missing volatility smile content');
+  assert(missingSmile.errors.some(e => e.code === 'EXPIRY_DATA_MISSING'), 'flags missing smile data');
+
+  const spotOutOfRange = runValidationGate(
+    'QQQ',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    { volatilitySmile: '<svg><text>ok</text></svg>' },
+    'call',
+    gammaStrikes,
+    20,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+  assert(spotOutOfRange.isPublishable === false, 'blocks posts when spot is far outside strike range');
+  assert(spotOutOfRange.errors.some(e => e.code === 'SPOT_OUTSIDE_STRIKE_RANGE'), 'uses spot out of range code');
 
   // Dark pool premium mislabel detection
   const darkPoolPremium = runValidationGate(
