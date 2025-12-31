@@ -1,5 +1,17 @@
 // TRUTH GATE HELPERS: Export these to ensure thread text matches chart labels exactly
 
+export class ChartDataError extends Error {
+  code: string;
+  chartType: string;
+
+  constructor(code: string, chartType: string, message: string) {
+    super(message);
+    this.name = 'ChartDataError';
+    this.code = code;
+    this.chartType = chartType;
+  }
+}
+
 // Ordinal suffix helper for percentiles (82 → "82nd", 91 → "91st", 3 → "3rd", etc.)
 export function getOrdinalSuffix(n: number): string {
   const lastDigit = n % 10;
@@ -1265,6 +1277,12 @@ export function generateGreeksSurfaceSvg(data: GreeksSurfaceData): string {
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
+  const placeholderTags = (data.whaleImpactZones || []).map(z => z.tag?.toUpperCase());
+  const invalidTag = placeholderTags.find(tag => tag === 'UW' || tag === 'UNUSUAL');
+  if (invalidTag) {
+    throw new ChartDataError('SVG_PLACEHOLDER_OR_NAN', 'greeksSurface', `Invalid placeholder tag detected: ${invalidTag}`);
+  }
+
   const cellWidth = chartWidth / data.strikes.length;
   const cellHeight = chartHeight / data.expiries.length;
 
@@ -1369,7 +1387,7 @@ export function generateMockGreeksSurfaceData(ticker: string, spotPrice: number,
 
   const whaleImpactZones: { strike: number; expiry: string; tag: string }[] = [];
   if (Math.random() > 0.5) {
-    whaleImpactZones.push({ strike: strikes[5], expiry: expiries[1], tag: 'UW' });
+    whaleImpactZones.push({ strike: strikes[5], expiry: expiries[1], tag: 'WHALE' });
   }
   if (Math.random() > 0.6) {
     whaleImpactZones.push({ strike: strikes[7], expiry: expiries[0], tag: 'SWEEP' });
@@ -1895,6 +1913,16 @@ export function generateOptionsStockVolumeSvg(data: OptionsStockVolumeData): str
   const padding = { top: 60, right: 80, bottom: 60, left: 70 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
+
+  const hasPlaceholderLabel = [...data.dates, ...(data.spikeThresholds || []).map(s => String(s.ratio))]
+    .some(label => /\bUW\b|UNUSUAL/i.test(label));
+  if (hasPlaceholderLabel) {
+    throw new ChartDataError('SVG_PLACEHOLDER_OR_NAN', 'optionsStockVolume', 'Placeholder label detected in options/stock volume data');
+  }
+
+  if (data.volumeRatio.some(ratio => !isFinite(ratio))) {
+    throw new ChartDataError('SVG_PLACEHOLDER_OR_NAN', 'optionsStockVolume', 'Volume ratio contains non-finite values');
+  }
 
   const maxPremium = Math.max(...data.optionsPremium) * 1.1;
   const maxRatio = Math.max(...data.volumeRatio) * 1.1;

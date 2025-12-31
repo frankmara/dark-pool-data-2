@@ -33,7 +33,8 @@ import {
   safeNumber,
   safePercentile,
   EventMetrics,
-  ValidationGateResult
+  ValidationGateResult,
+  ValidationResult
 } from "./post-validator";
 import { 
   generateChartSvg, 
@@ -55,6 +56,7 @@ import {
   generateHistoricalVsImpliedVolSvg,
   generateMockHistoricalVsImpliedVolData,
   generateGreeksSurfaceSvg,
+  ChartDataError,
   generateMockGreeksSurfaceData,
   generateTradeTapeTimelineSvg,
   generateMockTradeTapeTimelineData,
@@ -851,6 +853,21 @@ export async function registerRoutes(
   return httpServer;
 }
 
+export function buildValidationFailureResponse(validationResult: ValidationGateResult) {
+  return {
+    error: 'VALIDATION_FAILED',
+    isPublishable: false,
+    thread: [],
+    charts: {},
+    validation: {
+      isPublishable: validationResult.isPublishable,
+      errors: validationResult.errors,
+      warnings: validationResult.warnings,
+      summary: validationResult.summary
+    }
+  };
+}
+
 async function generateTestPost(item: { type: string; data: any }, isLiveData: boolean = false): Promise<any> {
   const isOptions = item.type === 'options';
   const data = item.data;
@@ -858,7 +875,9 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   // Create synchronized session context for all charts and content
   const session = createSessionContext();
   const asOfTimestamp = formatSessionTimestamp(session.asOfTime, 'short');
-  
+
+  const extraValidationErrors: ValidationResult[] = [];
+
   const ticker = data.ticker;
   
   // Fetch REAL Polygon options chain data for the 4 institutional charts
@@ -1001,10 +1020,11 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   // CRITICAL: Use EVENT spot price (price) for strike filtering, NOT optionsChain.spotPrice
   // This ensures gamma strikes are centered around the actual event price
   let gammaDataForThread: any;
-  
+
   // P0 FIX: Use the EVENT price for strike range filtering, not Polygon's cached spotPrice
   // Polygon spotPrice may be stale or from wrong symbol cache
   const eventSpotPrice = price; // From the actual event data
+  const eventExpiry = isOptions ? data.expiry : undefined;
   
   if (optionsChain && optionsChain.strikes.length > 0) {
     // Use Polygon live data but filter strikes around EVENT spot price (not Polygon's cached spot)
@@ -1286,12 +1306,25 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   
   // 1. VOLATILITY SMILE - Use getIVSmileData() helper
   let smileData;
-  if (optionsChain) {
-    const realSmileData = getIVSmileData(optionsChain);
-    if (realSmileData.length > 0) {
+  let volatilitySmileSvg = '';
+
+  if (optionsChain && isOptions) {
+    const targetExpiry = eventExpiry;
+    const realSmileData = targetExpiry ? getIVSmileData(optionsChain, targetExpiry) : [];
+
+    if (!targetExpiry || !optionsChain.expiries.includes(targetExpiry) || realSmileData.length === 0) {
+      extraValidationErrors.push({
+        isValid: false,
+        severity: 'error',
+        code: 'EXPIRY_DATA_MISSING',
+        message: `No volatility smile data available for event expiry ${targetExpiry || 'unknown'}`,
+        field: 'volatilitySmile',
+        value: { targetExpiry, available: optionsChain.expiries }
+      });
+    } else {
       smileData = {
         ticker,
-        expiry: optionsChain.expiries[0] || 'Near-term',
+        expiry: targetExpiry,
         strikes: realSmileData.map(d => d.strike),
         currentIV: realSmileData.map(d => d.callIV > 0 ? d.callIV * 100 : d.putIV * 100),
         priorIV: undefined,
@@ -1299,14 +1332,24 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
         anomalyStrikes: [],
         asOfTimestamp: polygonTimestamp
       };
-      console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon, spot: $${eventSpotPrice.toFixed(2)}`);
-    } else {
-      smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+      console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon for ${targetExpiry}, spot: $${eventSpotPrice.toFixed(2)}`);
     }
-  } else {
+  } else if (!isOptions) {
     smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+  } else {
+    extraValidationErrors.push({
+      isValid: false,
+      severity: 'error',
+      code: 'EXPIRY_DATA_MISSING',
+      message: 'No options chain available to build volatility smile for event expiry',
+      field: 'volatilitySmile',
+      value: { targetExpiry: eventExpiry }
+    });
   }
-  const volatilitySmileSvg = generateVolatilitySmileSvg(smileData);
+
+  if (smileData) {
+    volatilitySmileSvg = generateVolatilitySmileSvg(smileData);
+  }
 
   // Reuse heatmapData from truth gate (generated before thread) - add timestamp for chart
   const heatmapDataWithTimestamp = { ...heatmapData, asOfTimestamp: sessionTimestamp };
@@ -1392,7 +1435,22 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const historicalVsImpliedVolSvg = generateHistoricalVsImpliedVolSvg(hvIvData);
 
   const greeksData = { ...generateMockGreeksSurfaceData(ticker, basePrice, 'vega'), asOfTimestamp: sessionTimestamp };
-  const greeksSurfaceSvg = generateGreeksSurfaceSvg(greeksData);
+  let greeksSurfaceSvg = '';
+  try {
+    greeksSurfaceSvg = generateGreeksSurfaceSvg(greeksData);
+  } catch (error) {
+    if (error instanceof ChartDataError) {
+      extraValidationErrors.push({
+        isValid: false,
+        severity: 'error',
+        code: error.code,
+        message: error.message,
+        field: error.chartType
+      });
+    } else {
+      throw error;
+    }
+  }
 
   const tapeData = { ...generateMockTradeTapeTimelineData(ticker), asOfTimestamp: sessionTimestamp };
   const tradeTapeTimelineSvg = generateTradeTapeTimelineSvg(tapeData);
@@ -1409,7 +1467,22 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
 
   // SINGLE SOURCE OF TRUTH: Reuse chart data generated earlier for thread text (with timestamp added)
   const optVolData = { ...optVolDataForThread, asOfTimestamp: sessionTimestamp };
-  const optionsStockVolumeSvg = generateOptionsStockVolumeSvg(optVolData);
+  let optionsStockVolumeSvg = '';
+  try {
+    optionsStockVolumeSvg = generateOptionsStockVolumeSvg(optVolData);
+  } catch (error) {
+    if (error instanceof ChartDataError) {
+      extraValidationErrors.push({
+        isValid: false,
+        severity: 'error',
+        code: error.code,
+        message: error.message,
+        field: error.chartType
+      });
+    } else {
+      throw error;
+    }
+  }
   
   // ============================================================================
   // VALIDATION GATE - Block publishing if validation fails
@@ -1446,7 +1519,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     optionsStockVolumeSvg
   };
 
-  const validationResult: ValidationGateResult = runValidationGate(
+  let validationResult: ValidationGateResult = runValidationGate(
     ticker,
     isOptions ? 'OPTIONS_SWEEP' : 'DARK_POOL_PRINT',
     eventMetrics,
@@ -1461,17 +1534,18 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     modeledGammaPosition as 'long' | 'short'
   );
 
-  if (!validationResult.isPublishable) {
-    return {
-      error: 'VALIDATION_FAILED',
+  if (extraValidationErrors.length > 0) {
+    const combinedErrors = [...validationResult.errors, ...extraValidationErrors];
+    validationResult = {
+      ...validationResult,
       isPublishable: false,
-      validation: {
-        isPublishable: validationResult.isPublishable,
-        errors: validationResult.errors,
-        warnings: validationResult.warnings,
-        summary: validationResult.summary
-      }
+      errors: combinedErrors,
+      summary: `Validation FAILED: ${combinedErrors.length} error(s), ${validationResult.warnings.length} warning(s)`
     };
+  }
+
+  if (!validationResult.isPublishable) {
+    return buildValidationFailureResponse(validationResult);
   }
 
   return {
@@ -1514,6 +1588,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     maxPainSvg,
     ivRankHistogramSvg,
     optionsStockVolumeSvg,
+    charts: svgCharts,
     isLiveData,
     // Validation results
     validation: {
@@ -1540,3 +1615,5 @@ function getApiKeyEnvVar(provider: string): string {
 function getTwitterConfigured(): boolean {
   return !!(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET);
 }
+
+export { generateTestPost };
