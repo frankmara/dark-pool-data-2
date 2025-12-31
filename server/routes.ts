@@ -74,6 +74,7 @@ import {
   calculateModeledGammaLabel,
   getOrdinalSuffix
 } from "./chart-generator";
+import { IvNormalizationError, requireNormalizedIv } from "./iv-utils";
 
 const scannerConfigUpdateSchema = z.object({
   name: z.string().optional(),
@@ -1354,17 +1355,37 @@ async function generateTestPost(
         value: { targetExpiry, available: optionsChain.expiries }
       });
     } else {
-      smileData = {
-        ticker,
-        expiry: targetExpiry,
-        strikes: realSmileData.map(d => d.strike),
-        currentIV: realSmileData.map(d => d.callIV > 0 ? d.callIV * 100 : d.putIV * 100),
-        priorIV: undefined,
-        spotPrice: eventSpotPrice, // P0 FIX: Use event spot
-        anomalyStrikes: [],
-        asOfTimestamp: polygonTimestamp
-      };
-      console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon for ${targetExpiry}, spot: $${eventSpotPrice.toFixed(2)}`);
+      try {
+        const normalizedSmile = realSmileData.map(d => ({
+          strike: d.strike,
+          iv: requireNormalizedIv(d.callIV > 0 ? d.callIV : d.putIV, `volatilitySmile.${targetExpiry}.${d.strike}`)
+        }));
+
+        smileData = {
+          ticker,
+          expiry: targetExpiry,
+          strikes: normalizedSmile.map(d => d.strike),
+          currentIV: normalizedSmile.map(d => d.iv),
+          priorIV: undefined,
+          spotPrice: eventSpotPrice, // P0 FIX: Use event spot
+          anomalyStrikes: [],
+          asOfTimestamp: polygonTimestamp
+        };
+        console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon for ${targetExpiry}, spot: $${eventSpotPrice.toFixed(2)}`);
+      } catch (error) {
+        if (error instanceof IvNormalizationError) {
+          preflightErrors.push({
+            isValid: false,
+            severity: 'error',
+            code: 'INVALID_IV_UNITS',
+            message: `Volatility smile IV value ${error.value} looked ${error.scale}-scale and is out of bounds`,
+            field: 'volatilitySmile',
+            value: { iv: error.value, scale: error.scale }
+          });
+        } else {
+          throw error;
+        }
+      }
     }
   } else if (!isOptions) {
     smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
