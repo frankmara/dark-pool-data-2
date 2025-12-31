@@ -680,6 +680,16 @@ export function validateIvUnitScale(svgContent: string, fieldName: string = 'ivU
     .find(v => normalizeIv(v) === null);
 
   if (percentIssue !== undefined) {
+    if (percentIssue <= 0) {
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'SMILE_DATA_MISSING',
+        message: `Detected missing/zero IV percent-scale value (${percentIssue.toFixed(1)}%) in ${fieldName}`,
+        field: fieldName,
+        value: { maxPercent }
+      };
+    }
     return {
       isValid: false,
       severity: 'error',
@@ -692,6 +702,16 @@ export function validateIvUnitScale(svgContent: string, fieldName: string = 'ivU
 
   const decimalIssue = decimalMatches.find(v => normalizeIv(v) === null);
   if (decimalIssue !== undefined) {
+    if (decimalIssue <= 0) {
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'SMILE_DATA_MISSING',
+        message: `Detected missing/zero IV decimal value (${decimalIssue.toFixed(2)}) in ${fieldName}`,
+        field: fieldName,
+        value: { maxDecimal }
+      };
+    }
     return {
       isValid: false,
       severity: 'error',

@@ -11,10 +11,12 @@ import {
   runValidationGate,
   EventMetrics,
 } from './post-validator';
-import { normalizeIv } from './iv-utils';
+import { buildNormalizedSmilePoints, SmileDataMissingError, normalizeIv } from './iv-utils';
+import { generateFromCandidates } from './routes';
 
 let passCount = 0;
 let failCount = 0;
+const asyncTests: Promise<void>[] = [];
 
 function assert(condition: boolean, testName: string) {
   if (condition) {
@@ -26,10 +28,13 @@ function assert(condition: boolean, testName: string) {
   }
 }
 
-function testGroup(name: string, fn: () => void) {
+function testGroup(name: string, fn: () => void | Promise<void>) {
   console.log(`\n${name}`);
   console.log('='.repeat(name.length));
-  fn();
+  const result = fn();
+  if (result instanceof Promise) {
+    asyncTests.push(result);
+  }
 }
 
 const baseMetrics: EventMetrics = {
@@ -56,6 +61,8 @@ function buildValidSvg(label: string) {
 testGroup('normalizeIv', () => {
   assert(normalizeIv(9) === 0.09, 'iv=9 normalizes to 0.09');
   assert(normalizeIv(302) === null, 'iv=302 is rejected above 300% cap');
+  assert(normalizeIv(0) === null, 'iv=0 is treated as missing');
+  assert(normalizeIv(150) === 1.5, 'iv=150 is treated as percent scale');
 });
 
 testGroup('validateIvUnitScale', () => {
@@ -68,6 +75,60 @@ testGroup('validateIvUnitScale', () => {
   const bad = validateIvUnitScale('<svg><text>564%</text></svg>', 'smile');
   assert(bad.isValid === false, 'rejects implausible IV%');
   assert(bad.code === 'INVALID_IV_UNITS', 'returns invalid unit code');
+
+  const missing = validateIvUnitScale('<svg><text>0%</text></svg>', 'smile');
+  assert(missing.code === 'SMILE_DATA_MISSING', 'flags missing smile data for zero IV');
+});
+
+testGroup('volatility smile normalization', () => {
+  let threwMissing = false;
+  try {
+    buildNormalizedSmilePoints([
+      { strike: 100, callIV: 0 },
+      { strike: 105, callIV: 0 },
+      { strike: 110, callIV: 0 },
+    ], 5);
+  } catch (err) {
+    threwMissing = err instanceof SmileDataMissingError;
+  }
+  assert(threwMissing, 'throws when insufficient valid smile points');
+
+  const normalized = buildNormalizedSmilePoints([
+    { strike: 100, callIV: 25 },
+    { strike: 105, callIV: 0.25 },
+    { strike: 110, callIV: 0.3 },
+    { strike: 115, putIV: 0.28 },
+    { strike: 120, callIV: 0.35 },
+  ]);
+  assert(normalized.length === 5, 'keeps all valid smile points');
+  assert(Math.abs(normalized[0].iv - 0.25) < 1e-6, 'converts percent to decimal');
+});
+
+testGroup('generator retries until publishable', async () => {
+  let attempts = 0;
+  const generator = async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return {
+        validation: {
+          isPublishable: false,
+          errors: [{ code: 'SMILE_DATA_MISSING', message: 'missing' }],
+          warnings: [],
+          summary: 'missing',
+        },
+      } as any;
+    }
+
+    return { validation: { isPublishable: true, errors: [], warnings: [], summary: 'ok' } } as any;
+  };
+
+  const result = await generateFromCandidates([
+    { type: 'options', data: {}, isLive: true },
+    { type: 'options', data: {}, isLive: true },
+  ], {}, generator as any);
+
+  assert(result.ok === true, 'returns publishable candidate');
+  assert(result.failureStats.SMILE_DATA_MISSING === 1, 'tracks failure stats for first attempt');
 });
 
 // ============================================================================
@@ -178,6 +239,8 @@ testGroup('runValidationGate blocks invalid smile inputs', () => {
   assert(result.errors.some(e => e.code === 'INVALID_IV_UNITS'), 'flags invalid IV scale');
   assert(result.errors.some(e => e.code === 'EXPIRY_MATCH'), 'flags expiry mismatch');
 });
+
+await Promise.all(asyncTests);
 
 if (failCount > 0) {
   console.log(`\nTest run complete: ${passCount} passed, ${failCount} failed`);
