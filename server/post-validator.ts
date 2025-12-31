@@ -240,6 +240,7 @@ export function validateNoGarbledLabels(text: string, fieldName: string): Valida
 export function validateSpotInRange(
   spot: number,
   strikes: number[],
+  tolerance: number = 0.1,
   fieldName: string = 'spot'
 ): ValidationResult {
   if (strikes.length === 0) {
@@ -255,17 +256,15 @@ export function validateSpotInRange(
   const minStrike = Math.min(...strikes);
   const maxStrike = Math.max(...strikes);
   
-  // P0 BLOCKER: Spot must be within gamma strike range for any gamma-based claims to be valid
-  // Use stricter ±10% tolerance - if spot is far outside, the gamma panel is logically unusable
   const rangeMidpoint = (minStrike + maxStrike) / 2;
-  const rangeTolerance = (maxStrike - minStrike) * 0.1; // 10% of range
-  
+  const rangeTolerance = (maxStrike - minStrike) * tolerance;
+
   if (spot < minStrike - rangeTolerance || spot > maxStrike + rangeTolerance) {
     return {
       isValid: false,
-      severity: 'error',  // UPGRADED FROM WARNING TO BLOCKING ERROR
+      severity: 'error',
       code: 'SPOT_OUTSIDE_STRIKE_RANGE',
-      message: `Spot price $${spot} is far outside gamma strike range [$${minStrike}-$${maxStrike}] - gamma panel invalid`,
+      message: `Spot price $${spot} is outside strike range [$${minStrike}-$${maxStrike}]`,
       field: fieldName,
       value: { spot, minStrike, maxStrike, rangeMidpoint }
     };
@@ -508,55 +507,9 @@ export function validateNoPrintDirectionClaim(
 // CROSS-PANEL STRIKE CONSISTENCY VALIDATOR
 // ============================================================================
 
-export function validateCrossPanelConsistency(
-  gammaStrikes: number[],
-  ivStrikes: number[],
-  oiStrikes: number[],
-  fieldName: string = 'crossPanel'
-): ValidationResult {
-  // Skip if no gamma strikes
-  if (gammaStrikes.length === 0) {
-    return { isValid: true, severity: 'info', code: 'VALID', message: 'No gamma strikes to validate' };
-  }
-  
-  const gammaCenter = (Math.min(...gammaStrikes) + Math.max(...gammaStrikes)) / 2;
-  
-  // Check IV strikes if available
-  if (ivStrikes.length > 0) {
-    const ivCenter = (Math.min(...ivStrikes) + Math.max(...ivStrikes)) / 2;
-    const deviation = Math.abs(gammaCenter - ivCenter) / gammaCenter;
-    
-    if (deviation > 0.2) { // >20% deviation
-      return {
-        isValid: false,
-        severity: 'error',
-        code: 'STRIKE_RANGE_MISMATCH',
-        message: `Gamma strike center ($${gammaCenter.toFixed(0)}) differs >20% from IV strike center ($${ivCenter.toFixed(0)})`,
-        field: fieldName,
-        value: { gammaCenter, ivCenter, deviation: (deviation * 100).toFixed(1) + '%' }
-      };
-    }
-  }
-  
-  // Check OI strikes if available
-  if (oiStrikes.length > 0) {
-    const oiCenter = (Math.min(...oiStrikes) + Math.max(...oiStrikes)) / 2;
-    const deviation = Math.abs(gammaCenter - oiCenter) / gammaCenter;
-    
-    if (deviation > 0.2) { // >20% deviation
-      return {
-        isValid: false,
-        severity: 'error',
-        code: 'STRIKE_RANGE_MISMATCH',
-        message: `Gamma strike center ($${gammaCenter.toFixed(0)}) differs >20% from OI strike center ($${oiCenter.toFixed(0)})`,
-        field: fieldName,
-        value: { gammaCenter, oiCenter, deviation: (deviation * 100).toFixed(1) + '%' }
-      };
-    }
-  }
-  
-  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
-}
+// Gamma-based cross-panel validation removed as gamma surfaces are no longer part of
+// the high-confidence panel set. Strike coverage checks specific to IV surfaces and
+// smiles are handled closer to those charts.
 
 // ============================================================================
 // EXPIRY CONSISTENCY VALIDATOR
@@ -592,7 +545,7 @@ export function validateExpiryConsistency(
       return {
         isValid: false,
         severity: 'error',
-        code: 'EXPIRY_MISMATCH',
+        code: 'EXPIRY_MATCH',
         message: `${chartType} chart expiry (${chartExpiry}) is earlier than event expiry (${eventExpiry}) - stale data`,
         field: fieldName,
         value: { eventExpiry, chartExpiry, chartType }
@@ -603,7 +556,7 @@ export function validateExpiryConsistency(
     return {
       isValid: false,
       severity: 'error',
-      code: 'EXPIRY_MISMATCH',
+      code: 'EXPIRY_MATCH',
       message: `${chartType} chart expiry (${chartExpiry}) does not match event expiry (${eventExpiry})`,
       field: fieldName,
       value: { eventExpiry, chartExpiry, chartType }
@@ -715,15 +668,13 @@ export function validateIvUnitScale(svgContent: string, fieldName: string = 'ivU
   }
 
   const percentMatches = Array.from(svgContent.matchAll(/([0-9]{1,4}(?:\.[0-9]+)?)%/g));
-  if (percentMatches.length === 0) {
-    return { isValid: true, severity: 'info', code: 'VALID', message: 'No IV percentages found' };
-  }
+  const decimalMatches = Array.from(svgContent.matchAll(/[^0-9]([0-9](?:\.[0-9]+)?)[^0-9%]/g)).map(m => parseFloat(m[1]));
 
-  const maxPercent = Math.max(...percentMatches.map(m => parseFloat(m[1])));
+  const maxPercent = percentMatches.length > 0 ? Math.max(...percentMatches.map(m => parseFloat(m[1]))) : 0;
+  const maxDecimal = decimalMatches.length > 0 ? Math.max(...decimalMatches) : 0;
 
-  // Anything above 500% is treated as a hard error – realistic implied
-  // vol should not exceed this range in normalized units.
-  if (!isFinite(maxPercent) || maxPercent > 500) {
+  // IV must be plausible: either decimals (0-3) or percents (0-300%). Anything outside is invalid.
+  if (percentMatches.length > 0 && (!isFinite(maxPercent) || maxPercent > 300)) {
     return {
       isValid: false,
       severity: 'error',
@@ -731,6 +682,17 @@ export function validateIvUnitScale(svgContent: string, fieldName: string = 'ivU
       message: `Detected implausible IV scale (${maxPercent.toFixed(1)}%) in ${fieldName}`,
       field: fieldName,
       value: { maxPercent }
+    };
+  }
+
+  if (decimalMatches.length > 0 && maxDecimal > 3) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'INVALID_IV_UNITS',
+      message: `Detected implausible IV decimals (${maxDecimal.toFixed(2)}) in ${fieldName}`,
+      field: fieldName,
+      value: { maxDecimal }
     };
   }
 
@@ -859,16 +821,34 @@ export function runValidationGate(
     const copyCheck = validateCopyLogic(content, skewDirection, `thread[${i}]`);
     if (!copyCheck.isValid) errors.push(copyCheck);
 
-    const gammaSignCheck = validateGammaSignConsistency(content, gammaExposurePosition, `thread[${i}]`);
-    if (!gammaSignCheck.isValid) errors.push(gammaSignCheck);
-
     // P0: Validate no "print direction" overclaim in dark pool threads
     const overclaim = validateNoPrintDirectionClaim(content, eventType, `thread[${i}]`);
     if (!overclaim.isValid) errors.push(overclaim);
   });
   
-  // 3. Validate SVG charts
-  Object.entries(svgCharts).forEach(([chartType, svg]) => {
+  // 3. Validate SVG charts (only the five high-confidence panels)
+  const requiredCharts: Array<{ key: string; alias?: string }> = [
+    { key: 'flowSummarySvg' },
+    { key: 'optionsFlowHeatmapSvg' },
+    { key: 'historicalVsImpliedVolSvg' },
+    { key: 'volatilitySmileSvg' },
+    { key: 'ivRankDistributionSvg', alias: 'ivRankHistogramSvg' }
+  ];
+
+  requiredCharts.forEach(({ key: chartType, alias }) => {
+    const svg = svgCharts[chartType] || (alias ? svgCharts[alias] : undefined);
+
+    if (!svg) {
+      errors.push({
+        isValid: false,
+        severity: 'error',
+        code: 'SVG_MISSING',
+        message: `${chartType} is missing`,
+        field: chartType
+      });
+      return;
+    }
+
     const svgCheck = validateSvgContent(svg, chartType);
     if (!svgCheck.isValid) {
       if (svgCheck.severity === 'error') {
@@ -890,12 +870,12 @@ export function runValidationGate(
     }
 
     // Block corrupted IV scaling (e.g., 1700% labels) on volatility charts
-      if (chartType.toLowerCase().includes('volatility')) {
-        const ivScaleCheck = validateIvUnitScale(svg, chartType);
-        if (!ivScaleCheck.isValid) {
-          errors.push(ivScaleCheck);
-        }
+    if (chartType.toLowerCase().includes('volatility')) {
+      const ivScaleCheck = validateIvUnitScale(svg, chartType);
+      if (!ivScaleCheck.isValid) {
+        errors.push(ivScaleCheck);
       }
+    }
   });
 
   // 3b. Validate chart quality reports
@@ -947,16 +927,6 @@ export function runValidationGate(
           value: quality.strikeCoverage
         });
       }
-      if (quality.strikeCoverage.nearSpotPct < 0.2) {
-        errors.push({
-          isValid: false,
-          severity: 'error',
-          code: 'SPOT_OUTSIDE_STRIKE_RANGE',
-          message: `${chartType} spot lies outside reliable strike ladder coverage`,
-          field: chartType,
-          value: quality.strikeCoverage
-        });
-      }
     }
 
     if (chartType.toLowerCase().includes('correlation') && quality.symbolsUsed) {
@@ -980,32 +950,20 @@ export function runValidationGate(
     }
   });
   
-  // 4. Validate spot and strikes if provided
-  if (strikes.length > 0 && spot > 0) {
-    const spotCheck = validateSpotInRange(spot, strikes);
-    if (!spotCheck.isValid) {
-      if (spotCheck.severity === 'error') {
-        errors.push(spotCheck);
-      } else {
-        warnings.push(spotCheck);
-      }
-    }
-
-    const strikeCoverageCheck = validateStrikeCoverage(strikes, spot);
+  // 4. Validate strike coverage around spot for IV surface/smile
+  const coverageStrikes = ivStrikes.length > 0 ? ivStrikes : strikes;
+  if (coverageStrikes.length > 0 && spot > 0) {
+    const strikeCoverageCheck = validateStrikeCoverage(coverageStrikes, spot, 0.15, 5);
     if (!strikeCoverageCheck.isValid) {
       errors.push(strikeCoverageCheck);
     }
-  }
-  
-  // 5. Validate cross-panel strike consistency (gamma vs IV vs OI)
-  if (strikes.length > 0 || ivStrikes.length > 0 || oiStrikes.length > 0) {
-    const crossPanelCheck = validateCrossPanelConsistency(strikes, ivStrikes, oiStrikes);
-    if (!crossPanelCheck.isValid) {
-      errors.push(crossPanelCheck);
+    const spotRangeCheck = validateSpotInRange(spot, coverageStrikes, 0.1);
+    if (!spotRangeCheck.isValid && spotRangeCheck.severity === 'error') {
+      errors.push(spotRangeCheck);
     }
   }
-  
-  // 6. Validate expiry consistency (chart expiries must match event expiry)
+
+  // 5. Validate expiry consistency (chart expiries must match event expiry)
   if (metrics.expiry && Object.keys(chartExpiries).length > 0) {
     Object.entries(chartExpiries).forEach(([chartType, chartExpiry]) => {
       const expiryCheck = validateExpiryConsistency(metrics.expiry, chartExpiry, chartType);
