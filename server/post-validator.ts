@@ -1,6 +1,8 @@
+import { normalizeIv } from './iv-utils';
+
 /**
  * PostSpec Validation System
- * 
+ *
  * A robust validation layer that ensures all generated threads meet quality standards
  * before being published/exported. Prevents NaN, undefined, garbled text, and logic errors.
  */
@@ -673,24 +675,28 @@ export function validateIvUnitScale(svgContent: string, fieldName: string = 'ivU
   const maxPercent = percentMatches.length > 0 ? Math.max(...percentMatches.map(m => parseFloat(m[1]))) : 0;
   const maxDecimal = decimalMatches.length > 0 ? Math.max(...decimalMatches) : 0;
 
-  // IV must be plausible: either decimals (0-3) or percents (0-300%). Anything outside is invalid.
-  if (percentMatches.length > 0 && (!isFinite(maxPercent) || maxPercent > 300)) {
+  const percentIssue = percentMatches
+    .map(m => parseFloat(m[1]))
+    .find(v => normalizeIv(v) === null);
+
+  if (percentIssue !== undefined) {
     return {
       isValid: false,
       severity: 'error',
       code: 'INVALID_IV_UNITS',
-      message: `Detected implausible IV scale (${maxPercent.toFixed(1)}%) in ${fieldName}`,
+      message: `Detected implausible IV percent-scale value (${percentIssue.toFixed(1)}%) in ${fieldName}`,
       field: fieldName,
       value: { maxPercent }
     };
   }
 
-  if (decimalMatches.length > 0 && maxDecimal > 3) {
+  const decimalIssue = decimalMatches.find(v => normalizeIv(v) === null);
+  if (decimalIssue !== undefined) {
     return {
       isValid: false,
       severity: 'error',
       code: 'INVALID_IV_UNITS',
-      message: `Detected implausible IV decimals (${maxDecimal.toFixed(2)}) in ${fieldName}`,
+      message: `Detected implausible IV decimal value (${decimalIssue.toFixed(2)}) in ${fieldName}`,
       field: fieldName,
       value: { maxDecimal }
     };

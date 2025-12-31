@@ -484,8 +484,8 @@ interface VolatilitySmileData {
   ticker: string;
   expiry: string;
   strikes: number[];
-  currentIV: number[];
-  priorIV?: number[];
+  currentIV: number[]; // normalized decimals (0.45 = 45%)
+  priorIV?: number[];  // normalized decimals (0.45 = 45%)
   spotPrice: number;
   anomalyStrikes?: number[];
   skewPercentile?: number;
@@ -502,11 +502,12 @@ export function generateVolatilitySmileSvg(data: VolatilitySmileData): string {
   const minStrike = Math.min(...data.strikes);
   const maxStrike = Math.max(...data.strikes);
   const allIVs = [...data.currentIV, ...(data.priorIV || [])];
-  const minIV = Math.max(0, Math.min(...allIVs) - 5);
-  const maxIV = Math.max(...allIVs) + 10;
+  const minIV = Math.max(0, Math.min(...allIVs) - 0.05);
+  const maxIV = Math.max(...allIVs) + 0.05;
+  const ivRange = Math.max(0.1, maxIV - minIV);
 
   const scaleX = (strike: number) => padding.left + ((strike - minStrike) / (maxStrike - minStrike)) * chartWidth;
-  const scaleY = (iv: number) => padding.top + (1 - (iv - minIV) / (maxIV - minIV)) * chartHeight;
+  const scaleY = (iv: number) => padding.top + (1 - (iv - minIV) / ivRange) * chartHeight;
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">
     <defs>
@@ -519,9 +520,9 @@ export function generateVolatilitySmileSvg(data: VolatilitySmileData): string {
 
   for (let i = 0; i <= 5; i++) {
     const y = padding.top + (i / 5) * chartHeight;
-    const iv = maxIV - (i / 5) * (maxIV - minIV);
+    const iv = maxIV - (i / 5) * ivRange;
     svg += `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#1a1a2e" stroke-width="1"/>`;
-    svg += `<text x="${padding.left - 10}" y="${y + 4}" text-anchor="end" fill="#6b7280" font-size="10" font-family="monospace">${iv.toFixed(0)}%</text>`;
+    svg += `<text x="${padding.left - 10}" y="${y + 4}" text-anchor="end" fill="#6b7280" font-size="10" font-family="monospace">${(iv * 100).toFixed(0)}%</text>`;
   }
 
   const spotX = scaleX(data.spotPrice);
@@ -563,7 +564,7 @@ export function generateVolatilitySmileSvg(data: VolatilitySmileData): string {
   svg += `<text x="${width - 105}" y="24" fill="#6b7280" font-size="9" font-family="sans-serif">Prior Session</text>`;
   
   // Interpretation annotation
-  const putSkew = data.currentIV[0] - data.currentIV[data.currentIV.length - 1];
+  const putSkew = (data.currentIV[0] - data.currentIV[data.currentIV.length - 1]) * 100;
   const derivedPercentile = Math.max(0, Math.min(100, 50 + putSkew * 4));
   const skewPercentile = typeof data.skewPercentile === 'number' ? data.skewPercentile : derivedPercentile;
   let skewInterpretation: string;
@@ -883,18 +884,18 @@ export function generateMockVolatilitySmileData(ticker: string, spotPrice: numbe
   
   strikes.forEach((strike, i) => {
     const moneyness = (strike - spotPrice) / spotPrice;
-    const baseIV = 25 + Math.abs(moneyness) * 100 + (moneyness < 0 ? 5 : 0);
-    const noise = (Math.random() - 0.5) * 5;
+    const baseIV = 0.25 + Math.abs(moneyness) + (moneyness < 0 ? 0.05 : 0);
+    const noise = (Math.random() - 0.5) * 0.05;
     currentIV.push(baseIV + noise);
-    priorIV.push(baseIV - 3 + (Math.random() - 0.5) * 3);
-    
+    priorIV.push(baseIV - 0.03 + (Math.random() - 0.5) * 0.03);
+
     if (Math.random() > 0.85) {
       anomalyStrikes.push(strike);
-      currentIV[i] += 15;
+      currentIV[i] += 0.15;
     }
   });
 
-  const skewRaw = currentIV[0] - currentIV[currentIV.length - 1];
+  const skewRaw = (currentIV[0] - currentIV[currentIV.length - 1]) * 100;
   const skewPercentile = Math.max(0, Math.min(100, 55 + skewRaw * 3));
 
   return {

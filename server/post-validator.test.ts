@@ -11,6 +11,7 @@ import {
   runValidationGate,
   EventMetrics,
 } from './post-validator';
+import { normalizeIv } from './iv-utils';
 
 let passCount = 0;
 let failCount = 0;
@@ -49,12 +50,20 @@ function buildValidSvg(label: string) {
 }
 
 // ============================================================================
-// IV UNIT VALIDATION
+// IV UNIT NORMALIZATION & VALIDATION
 // ============================================================================
+
+testGroup('normalizeIv', () => {
+  assert(normalizeIv(9) === 0.09, 'iv=9 normalizes to 0.09');
+  assert(normalizeIv(302) === null, 'iv=302 is rejected above 300% cap');
+});
 
 testGroup('validateIvUnitScale', () => {
   const ok = validateIvUnitScale('<svg><text>40%</text></svg>', 'smile');
   assert(ok.isValid === true, 'accepts plausible IV%');
+
+  const normalizedPercent = validateIvUnitScale('<svg><text>IV 9</text></svg>', 'smile');
+  assert(normalizedPercent.isValid === true, 'accepts percent-scale whole numbers once normalized');
 
   const bad = validateIvUnitScale('<svg><text>564%</text></svg>', 'smile');
   assert(bad.isValid === false, 'rejects implausible IV%');
