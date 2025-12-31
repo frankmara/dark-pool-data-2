@@ -1461,6 +1461,19 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     modeledGammaPosition as 'long' | 'short'
   );
 
+  if (!validationResult.isPublishable) {
+    return {
+      error: 'VALIDATION_FAILED',
+      isPublishable: false,
+      validation: {
+        isPublishable: validationResult.isPublishable,
+        errors: validationResult.errors,
+        warnings: validationResult.warnings,
+        summary: validationResult.summary
+      }
+    };
+  }
+
   return {
     ticker,
     eventType: isOptions ? 'options_sweep' : 'dark_pool',
