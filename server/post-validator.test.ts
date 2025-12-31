@@ -19,6 +19,7 @@ import {
   validateCopyLogic,
   validateGammaSignConsistency,
   validateSvgContent,
+  validateIvUnitScale,
   validateOptionsSwepEvent,
   validateDarkPoolEvent,
   validateBreakevenPlausibility,
@@ -699,6 +700,22 @@ testGroup('validateSvgContent with placeholders', () => {
     'volumeChart'
   );
   assert(validPercentage.isValid === true, 'accepts percentage values');
+});
+
+// ============================================================================
+// IV UNIT SCALE TESTS
+// ============================================================================
+
+testGroup('validateIvUnitScale', () => {
+  const validScale = validateIvUnitScale('<svg><text>75%</text><text>120%</text></svg>', 'volatilitySmile');
+  assert(validScale.isValid === true, 'accepts plausible IV percentages');
+
+  const corruptedScale = validateIvUnitScale('<svg><text>1734%</text></svg>', 'volatilitySmile');
+  assert(corruptedScale.isValid === false, 'rejects implausible IV percentages');
+  assert(corruptedScale.code === 'INVALID_IV_UNITS', 'returns INVALID_IV_UNITS code');
+
+  const missingSvg = validateIvUnitScale('', 'volatilitySmile');
+  assert(missingSvg.isValid === false, 'rejects missing SVG content');
 });
 
 // ============================================================================
