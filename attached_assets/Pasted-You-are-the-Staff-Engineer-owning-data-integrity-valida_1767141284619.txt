@@ -1,0 +1,53 @@
+You are the Staff Engineer owning data integrity + validation for Dark Pool Insights.
+
+GOAL
+Make the generator “self-defending”: if any panel is inconsistent, mislabeled, placeholder-tainted, or mismatched to the event (spot/strikes/expiry), the post MUST be blocked and not render/export.
+
+NON-NEGOTIABLE ACCEPTANCE TESTS (these are currently failing)
+A) TSLA Part 3:
+- TSLA spot is ~$455 (see flow summary), but gamma chart shows strikes $80–$255. This MUST hard-block.
+- Root cause must be fixed (wrong underlying, cached symbol, strike scaling, or fallback data).
+B) SPY Part 3:
+- Sweep strike is ~$687 but gamma chart shows $500–$590. This MUST hard-block.
+- Remove the sentence “This aligns with the sweep direction.” We do NOT claim direction from sweeps/prints without aggressor-side data.
+C) SPXW Part 3:
+- Sweep expiry is 2026-03-31 but vol smile is labeled 2025-01-17. This MUST block OR the smile must be regenerated for the event expiry.
+- Vega surface contains “UW / N/A” artifacts. Placeholder detection must block these too.
+
+IMPLEMENTATION REQUIREMENTS
+1) Create a single canonical “PostContext” object used by ALL panels:
+   - { symbol, eventType, eventTimestamp, spotPrice, eventStrikeCenter, eventExpiry, strikeRangeHeatmap, strikeRangeOI, strikeRangeGamma, ivSeries, hvSeries, skewPercentile, maxPain, … }
+   - No panel may fetch data independently without going through PostContext.
+
+2) Validation Gate MUST run AFTER all panel data is assembled and BEFORE any rendering/export.
+   - If ANY P0 validation fails => block post generation (no PDF, no images, no tweet thread).
+   - Output a human-readable ValidationReport to console AND save it in logs for debugging.
+
+3) Add/Repair these P0 validations (blocking):
+   - spotWithinGammaRange: spot must be within [minGammaStrike, maxGammaStrike] with ±10% tolerance.
+   - crossPanelStrikeConsistency: heatmap, OI ladder, gamma must have centers aligned within 20% (existing logic may not be wired; fix it).
+   - expiryConsistency: any chart labeled with an expiry must match eventExpiry; if using “reference front-month”, label explicitly and only allow if eventExpiry is missing.
+   - placeholderAndArtifactScan: block if any SVG/text layer contains: “UNUSUAL”, “UW”, “N/A” as a legend artifact, NaN, undefined, or invalid coordinates/dimensions.
+
+4) Fix copy rules (hard rules):
+   - Remove/replace any phrasing that implies direction from prints alone:
+     - banned: “aligns with sweep direction”, “print direction”, “confirms buyers/sellers”
+     - allowed: “consistent with put-side activity”, “shows hedging demand”, “direction not confirmed without aggressor data”
+   - Replace “Institutions” with “large participants” or “flow suggests”.
+
+5) Add tests:
+   - Unit tests for each validation above.
+   - Integration tests that reproduce the failing examples:
+     - TSLA spot ~455 with gamma strikes 80–255 should block
+     - SPY strike ~687 with gamma strikes 500–590 should block
+     - SPXW event expiry 2026-03-31 with smile expiry 2025-01-17 should block
+     - Vega surface containing “UW” should block
+
+DELIVERABLES
+- PR with code changes + tests (all passing).
+- Paste the ValidationReport output for TSLA, SPY, SPXW runs showing either:
+  (a) the post is blocked with clear reasons, OR
+  (b) the post passes and the panels are consistent (gamma strikes bracket spot; expiries align; no artifacts).
+- Regenerate “Dark Pool Insights - 3 posts part 3” and confirm TSLA/SPY mismatches no longer occur.
+
+Do NOT introduce “Mode A/Mode B” unless absolutely required. Fix the core invariants first.

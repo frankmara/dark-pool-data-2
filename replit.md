@@ -32,7 +32,13 @@ The application features a client-server architecture with a React frontend (`cl
 - **Health Status Widget**: Provides at-a-glance system health for Scanner, LLM Agent, Chart Gen, and Poster.
 - **Notification & Alerting System**: Configurable email, SMS, and Discord notifications with customizable alert rules.
 - **Global Error Handler & Fallback Logic Nodes**: Workflow utilities for resilient automation with retry configurations and primary/secondary source routing.
-- **Validation Gate System**: Comprehensive PostSpec validation with multiple validators for data integrity, consistency, and publishability, including 102 unit tests.
+- **Validation Gate System**: Comprehensive PostSpec validation with 14+ validators for data integrity, consistency, and publishability.
+  - **validateExpiryConsistency()**: Blocks posts where chart expiries don't match event expiry (prevents stale data)
+  - **validateCrossPanelConsistency()**: Ensures gamma, IV, and OI strike ranges align within 20% deviation
+  - **validateNoPrintDirectionClaim()**: Prevents overclaiming "print direction" in dark pool threads
+  - **Event spot price consistency**: Charts use EVENT spot price for strike filtering (not Polygon's cached value)
+  - **SVG artifact detection**: Rejects "UNUSUAL", "UW", multiple "N/A", NaN dimensions/coordinates
+  - **117 unit tests** covering all validators and edge cases
 
 **System Design Choices:**
 - Emphasis on real-time data and actionable insights.

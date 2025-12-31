@@ -21,6 +21,7 @@ import {
   validateDarkPoolEvent,
   validateNoPrintDirectionClaim,
   validateCrossPanelConsistency,
+  validateExpiryConsistency,
   runValidationGate,
   formatDollarAmount,
   formatPercent,
@@ -467,6 +468,24 @@ testGroup('runValidationGate', () => {
 
   assert(misalignedResult.isPublishable === false, 'blocks misaligned cross-panel strikes');
   assert(misalignedResult.errors.some(e => e.code === 'STRIKE_RANGE_MISMATCH'), 'identifies strike mismatch error');
+
+  // Test with mismatched chart expiries
+  const expiryMismatchResult = runValidationGate(
+    'SPXW',
+    'OPTIONS_SWEEP',
+    { ...validMetrics, expiry: '2026-03-31' },  // Event expiry in March 2026
+    validThread,
+    validCharts,
+    'call',
+    [140, 145, 150, 155, 160],
+    150,
+    [],
+    [],
+    { volatilitySmile: '2025-01-17' }  // Chart expiry in Jan 2025 (stale!)
+  );
+
+  assert(expiryMismatchResult.isPublishable === false, 'blocks mismatched chart expiries');
+  assert(expiryMismatchResult.errors.some(e => e.code === 'EXPIRY_MISMATCH'), 'identifies expiry mismatch error');
 });
 
 // ============================================================================
@@ -597,6 +616,62 @@ testGroup('validateSpotInRange (blocking)', () => {
   // Should pass when spot is just slightly outside (within tolerance)
   const slightlyOutside = validateSpotInRange(138, [140, 145, 150, 155, 160]);
   assert(slightlyOutside.isValid === true, 'accepts spot slightly outside range (within tolerance)');
+});
+
+// ============================================================================
+// EXPIRY CONSISTENCY TESTS
+// ============================================================================
+
+testGroup('validateExpiryConsistency', () => {
+  // Should pass when expiries match
+  const matching = validateExpiryConsistency('2026-03-31', '2026-03-31', 'volSmile');
+  assert(matching.isValid === true, 'accepts matching expiries');
+
+  // Should fail when chart expiry is earlier than event expiry (stale data)
+  const staleData = validateExpiryConsistency('2026-03-31', '2025-01-17', 'volSmile');
+  assert(staleData.isValid === false, 'rejects chart expiry earlier than event expiry');
+  assert(staleData.code === 'EXPIRY_MISMATCH', 'returns correct error code');
+  assert(staleData.message?.includes('stale'), 'error mentions stale data');
+
+  // Should fail when expiries don't match even if chart expiry is later
+  const mismatch = validateExpiryConsistency('2026-01-17', '2026-03-31', 'volSmile');
+  assert(mismatch.isValid === false, 'rejects mismatched expiries');
+
+  // Should pass when no event expiry specified
+  const noEventExpiry = validateExpiryConsistency(undefined, '2025-01-17', 'volSmile');
+  assert(noEventExpiry.isValid === true, 'accepts undefined event expiry');
+
+  // Should pass when no chart expiry specified
+  const noChartExpiry = validateExpiryConsistency('2026-03-31', undefined, 'volSmile');
+  assert(noChartExpiry.isValid === true, 'accepts undefined chart expiry');
+});
+
+// ============================================================================
+// UW ARTIFACT DETECTION TESTS
+// ============================================================================
+
+testGroup('validateSvgContent with UW artifacts', () => {
+  // Should reject "UW" artifact
+  const uwArtifact = validateSvgContent(
+    '<svg><text>UW / N/A</text></svg>',
+    'vegaSurface'
+  );
+  assert(uwArtifact.isValid === false, 'rejects UW artifact');
+  assert(uwArtifact.message?.includes('UW'), 'error mentions UW artifact');
+
+  // Should reject standalone UW
+  const standaloneUw = validateSvgContent(
+    '<svg><text>Source: UW</text></svg>',
+    'chart'
+  );
+  assert(standaloneUw.isValid === false, 'rejects standalone UW');
+
+  // Should accept valid source attribution
+  const validSource = validateSvgContent(
+    '<svg><text>Source: Options Flow Analytics</text></svg>',
+    'chart'
+  );
+  assert(validSource.isValid === true, 'accepts valid source text');
 });
 
 // ============================================================================

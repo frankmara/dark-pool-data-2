@@ -85,6 +85,8 @@ const SUSPICIOUS_PATTERNS = [
   /\[object Object\]/g,
   /(.)\1{5,}/g,  // 5+ repeated characters (garbled text detection)
   /\bUNUSUAL\b/g,  // P0: Placeholder text in charts that should be replaced with real values
+  /\bUW\b/g,  // P0: "UW" artifact from Unusual Whales data that wasn't replaced
+  /\bN\/A\b(?!\s*<\/text>)/g,  // P0: Standalone "N/A" in chart content (except in valid text contexts)
 ];
 
 const LABEL_CORRUPTION_PATTERNS = [
@@ -407,6 +409,61 @@ export function validateCrossPanelConsistency(
 }
 
 // ============================================================================
+// EXPIRY CONSISTENCY VALIDATOR
+// ============================================================================
+
+export function validateExpiryConsistency(
+  eventExpiry: string | undefined,
+  chartExpiry: string | undefined,
+  chartType: string,
+  fieldName: string = 'expiryConsistency'
+): ValidationResult {
+  // Skip if no event expiry is specified
+  if (!eventExpiry) {
+    return { isValid: true, severity: 'info', code: 'VALID', message: 'No event expiry to validate' };
+  }
+  
+  // Skip if no chart expiry is specified
+  if (!chartExpiry) {
+    return { isValid: true, severity: 'info', code: 'VALID', message: 'No chart expiry to validate' };
+  }
+  
+  // Normalize dates for comparison (YYYY-MM-DD format)
+  const eventDate = new Date(eventExpiry).toISOString().split('T')[0];
+  const chartDate = new Date(chartExpiry).toISOString().split('T')[0];
+  
+  // Check if dates are the same
+  if (eventDate !== chartDate) {
+    // Check if chart expiry is in the past compared to event expiry (more severe)
+    const eventTime = new Date(eventExpiry).getTime();
+    const chartTime = new Date(chartExpiry).getTime();
+    
+    if (chartTime < eventTime) {
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'EXPIRY_MISMATCH',
+        message: `${chartType} chart expiry (${chartExpiry}) is earlier than event expiry (${eventExpiry}) - stale data`,
+        field: fieldName,
+        value: { eventExpiry, chartExpiry, chartType }
+      };
+    }
+    
+    // Chart expiry is different but in the future - still a mismatch but could be intentional
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'EXPIRY_MISMATCH',
+      message: `${chartType} chart expiry (${chartExpiry}) does not match event expiry (${eventExpiry})`,
+      field: fieldName,
+      value: { eventExpiry, chartExpiry, chartType }
+    };
+  }
+  
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+}
+
+// ============================================================================
 // SVG CONTENT VALIDATOR
 // ============================================================================
 
@@ -426,6 +483,21 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
   // P0: Check for "UNUSUAL" placeholder text that should be replaced with real values
   if (/>UNUSUAL</i.test(svgContent) || />.*\bUNUSUAL\b.*</i.test(svgContent)) {
     errors.push('SVG contains "UNUSUAL" placeholder text - replace with actual values');
+  }
+  
+  // P0: Check for "UW" artifact from Unusual Whales data that wasn't replaced
+  if (/>UW</i.test(svgContent) || />.*\bUW\b.*</i.test(svgContent)) {
+    errors.push('SVG contains "UW" artifact - data placeholder not replaced');
+  }
+  
+  // P0: Check for standalone "N/A" as a legend artifact (but allow in valid fallback contexts)
+  // This catches "N/A" in legend entries or data labels that should have real values
+  if (/>"?N\/A"?<\/text>/i.test(svgContent) && !/>N\/A$/i.test(svgContent)) {
+    // Only flag if "N/A" appears in what looks like a data label context
+    const naCount = (svgContent.match(/>N\/A</g) || []).length;
+    if (naCount > 3) {
+      errors.push('SVG contains multiple "N/A" artifacts - data placeholders not replaced');
+    }
   }
   
   // Check for garbled labels
@@ -528,7 +600,8 @@ export function runValidationGate(
   strikes: number[] = [],
   spot: number = 0,
   ivStrikes: number[] = [],
-  oiStrikes: number[] = []
+  oiStrikes: number[] = [],
+  chartExpiries: Record<string, string> = {} // Map of chartType -> expiry for expiry consistency checks
 ): ValidationGateResult {
   const errors: ValidationResult[] = [];
   const warnings: ValidationResult[] = [];
@@ -587,7 +660,17 @@ export function runValidationGate(
     }
   }
   
-  // 6. Build summary
+  // 6. Validate expiry consistency (chart expiries must match event expiry)
+  if (metrics.expiry && Object.keys(chartExpiries).length > 0) {
+    Object.entries(chartExpiries).forEach(([chartType, chartExpiry]) => {
+      const expiryCheck = validateExpiryConsistency(metrics.expiry, chartExpiry, chartType);
+      if (!expiryCheck.isValid) {
+        errors.push(expiryCheck);
+      }
+    });
+  }
+  
+  // 7. Build summary
   const isPublishable = errors.length === 0;
   const summary = isPublishable 
     ? `Validation passed with ${warnings.length} warning(s)`

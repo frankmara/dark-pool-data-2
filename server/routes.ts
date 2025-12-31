@@ -998,39 +998,54 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const volumeInterpretation = avgRatio > 120 ? 'elevated' : avgRatio < 80 ? 'subdued' : 'normal';
   
   // Generate gamma data - USE POLYGON DATA when available (same logic as chart generation)
-  // This ensures thread text matches chart SVG exactly
+  // CRITICAL: Use EVENT spot price (price) for strike filtering, NOT optionsChain.spotPrice
+  // This ensures gamma strikes are centered around the actual event price
   let gammaDataForThread: any;
+  
+  // P0 FIX: Use the EVENT price for strike range filtering, not Polygon's cached spotPrice
+  // Polygon spotPrice may be stale or from wrong symbol cache
+  const eventSpotPrice = price; // From the actual event data
+  
   if (optionsChain && optionsChain.strikes.length > 0) {
-    // Use Polygon live data (same logic as chart generation section)
+    // Use Polygon live data but filter strikes around EVENT spot price (not Polygon's cached spot)
     const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
+    
+    // P0 FIX: Filter strikes based on EVENT spot price, not optionsChain.spotPrice
     const nearATMStrikes = sortedStrikes.filter(s => 
-      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.15
+      Math.abs(s - eventSpotPrice) / eventSpotPrice < 0.15
     ).slice(0, 20);
-    const strikes = nearATMStrikes.length > 0 ? nearATMStrikes : sortedStrikes.slice(0, 20);
     
-    const netGamma = strikes.map(s => optionsChain.gammaByStrike[s] || 0);
-    const totalGammaExposure = netGamma.reduce((a, b) => a + b, 0);
-    
-    // Find gamma flip points (where gamma crosses zero)
-    const gammaFlips: { strike: number; percentile: number }[] = [];
-    for (let i = 1; i < netGamma.length; i++) {
-      if ((netGamma[i-1] > 0 && netGamma[i] < 0) || (netGamma[i-1] < 0 && netGamma[i] > 0)) {
-        gammaFlips.push({ strike: strikes[i], percentile: 75 });
+    // SANITY CHECK: If no strikes within ±15% of EVENT spot, the Polygon data may be wrong
+    // Fall back to mock data rather than show mismatched strikes
+    if (nearATMStrikes.length < 5) {
+      console.warn(`[TestPost] Gamma: Only ${nearATMStrikes.length} Polygon strikes within ±15% of event spot $${eventSpotPrice.toFixed(2)} - using mock data`);
+      gammaDataForThread = generateMockGammaExposureData(ticker, eventSpotPrice);
+    } else {
+      const strikes = nearATMStrikes;
+      const netGamma = strikes.map(s => optionsChain.gammaByStrike[s] || 0);
+      const totalGammaExposure = netGamma.reduce((a, b) => a + b, 0);
+      
+      // Find gamma flip points (where gamma crosses zero)
+      const gammaFlips: { strike: number; percentile: number }[] = [];
+      for (let i = 1; i < netGamma.length; i++) {
+        if ((netGamma[i-1] > 0 && netGamma[i] < 0) || (netGamma[i-1] < 0 && netGamma[i] > 0)) {
+          gammaFlips.push({ strike: strikes[i], percentile: 75 });
+        }
       }
+      
+      gammaDataForThread = {
+        ticker,
+        strikes,
+        netGamma,
+        spotPrice: eventSpotPrice, // Use event spot, not Polygon spot
+        totalGammaExposure,
+        gammaFlips
+      };
+      console.error(`[TestPost] Thread using Polygon gamma data: ${strikes.length} strikes centered around event spot $${eventSpotPrice.toFixed(2)}`);
     }
-    
-    gammaDataForThread = {
-      ticker,
-      strikes,
-      netGamma,
-      spotPrice: optionsChain.spotPrice,
-      totalGammaExposure,
-      gammaFlips
-    };
-    console.error(`[TestPost] Thread using Polygon gamma data: ${strikes.length} strikes`);
   } else {
-    // Fallback to mock data
-    gammaDataForThread = generateMockGammaExposureData(ticker, price);
+    // Fallback to mock data using EVENT price
+    gammaDataForThread = generateMockGammaExposureData(ticker, eventSpotPrice);
   }
   
   // Find the strike with highest absolute net gamma (this is where gamma "wall" is)
@@ -1104,7 +1119,7 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
       },
       {
         index: 6,
-        content: `6/8 — Confirm with flow behavior\n\nOptions volume is ${volumeInterpretation} (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'This aligns with the sweep direction.'}`,
+        content: `6/8 — Confirm with flow behavior\n\nOptions volume is ${volumeInterpretation} (${optionsVolumeRatio}% of stock ADV).\n\nBut the activity pattern shows ${flowLabel.includes('mixed') ? 'rotation, not accumulation' : flowLabel.includes('bullish') ? 'accumulation building' : 'distribution pressure'}.\n\n${flowLabel.includes('mixed') ? 'That\'s insurance being repositioned, not momentum.' : 'Pattern consistent with broader options-flow bias (note: sweeps alone don\'t confirm direction).'}`,
         type: 'flow',
         chartRef: 'tradeTapeTimeline'
       },
@@ -1280,11 +1295,11 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
         strikes: realSmileData.map(d => d.strike),
         currentIV: realSmileData.map(d => d.callIV > 0 ? d.callIV * 100 : d.putIV * 100),
         priorIV: undefined,
-        spotPrice: optionsChain.spotPrice,
+        spotPrice: eventSpotPrice, // P0 FIX: Use event spot
         anomalyStrikes: [],
         asOfTimestamp: polygonTimestamp
       };
-      console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon`);
+      console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon, spot: $${eventSpotPrice.toFixed(2)}`);
     } else {
       smileData = { ...generateMockVolatilitySmileData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
     }
@@ -1298,19 +1313,19 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const optionsFlowHeatmapSvg = generateOptionsFlowHeatmapSvg(heatmapDataWithTimestamp);
 
   // 2. PUT/CALL OI LADDER - Use callOIByStrike and putOIByStrike from Polygon
-  // STRIKE SANITY CHECK: Only use strikes within ±20% of spot price
+  // P0 FIX: Use EVENT spot price for strike filtering, not Polygon's cached spotPrice
   let oiData;
   if (optionsChain && optionsChain.strikes.length > 0) {
     const sortedStrikes = optionsChain.strikes.slice().sort((a, b) => a - b);
+    // P0 FIX: Use eventSpotPrice for filtering
     const nearATMStrikes = sortedStrikes.filter(s => 
-      Math.abs(s - optionsChain.spotPrice) / optionsChain.spotPrice < 0.20
+      Math.abs(s - eventSpotPrice) / eventSpotPrice < 0.20
     ).slice(0, 15);
     
-    // SANITY CHECK: Require at least 5 strikes within ±20% of spot
-    // If not enough strikes, fall back to mock data (prevents showing wrong chain)
+    // SANITY CHECK: Require at least 5 strikes within ±20% of EVENT spot
     if (nearATMStrikes.length < 5) {
-      console.warn(`[TestPost] OI Ladder: Only ${nearATMStrikes.length} strikes within ±20% of spot $${optionsChain.spotPrice} - using mock data`);
-      oiData = { ...generateMockPutCallOIData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+      console.warn(`[TestPost] OI Ladder: Only ${nearATMStrikes.length} strikes within ±20% of event spot $${eventSpotPrice.toFixed(2)} - using mock data`);
+      oiData = { ...generateMockPutCallOIData(ticker, eventSpotPrice), asOfTimestamp: sessionTimestamp };
     } else {
       const strikes = nearATMStrikes;
       const callOI = strikes.map(s => optionsChain.callOIByStrike[s] || 0);
@@ -1325,14 +1340,14 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
         putOI,
         callOIChange: callOI.map(oi => oi * 0.1), // Estimate: 10% change
         putOIChange: putOI.map(oi => oi * 0.1),
-        spotPrice: optionsChain.spotPrice,
+        spotPrice: eventSpotPrice, // P0 FIX: Use event spot
         putCallRatio: (totalCallOI > 0 && totalPutOI > 0) ? totalPutOI / totalCallOI : null,
         asOfTimestamp: polygonTimestamp
       };
-      console.error(`[TestPost] Put/Call OI Ladder using ${strikes.length} strikes from Polygon`);
+      console.error(`[TestPost] Put/Call OI Ladder using ${strikes.length} strikes centered around event spot $${eventSpotPrice.toFixed(2)}`);
     }
   } else {
-    oiData = { ...generateMockPutCallOIData(ticker, basePrice), asOfTimestamp: sessionTimestamp };
+    oiData = { ...generateMockPutCallOIData(ticker, eventSpotPrice), asOfTimestamp: sessionTimestamp };
   }
   const putCallOILadderSvg = generatePutCallOILadderSvg(oiData);
 
