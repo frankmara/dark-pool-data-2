@@ -35,7 +35,14 @@ import {
   safePercentile,
   EventMetrics
 } from './post-validator';
-import { generateOptionsStockVolumeSvg } from './chart-generator';
+import {
+  generateOptionsStockVolumeSvg,
+  generateMockGammaExposureData,
+  generateMockGreeksSurfaceData,
+  generateMockMaxPainData,
+  generateMockPutCallOIData,
+  generateMockVolatilitySmileData
+} from './chart-generator';
 
 // ============================================================================
 // TEST UTILITIES
@@ -785,6 +792,23 @@ testGroup('runValidationGate', () => {
   assert(spotOutOfRange.isPublishable === false, 'blocks posts when spot is far outside strike range');
   assert(spotOutOfRange.errors.some(e => e.code === 'SPOT_OUTSIDE_STRIKE_RANGE'), 'uses spot out of range code');
 
+  const negativeStrike = runValidationGate(
+    'QQQ',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    { volatilitySmile: '<svg><text>ok</text></svg>' },
+    'call',
+    [150, -1, 155],
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+  assert(negativeStrike.isPublishable === false, 'blocks posts when strike ladder includes non-positive values');
+  assert(negativeStrike.errors.some(e => e.code === 'INVALID_STRIKE_VALUE'), 'uses invalid strike value code');
+
   // Dark pool premium mislabel detection
   const darkPoolPremium = runValidationGate(
     'JPM',
@@ -802,6 +826,23 @@ testGroup('runValidationGate', () => {
   );
   assert(darkPoolPremium.isPublishable === false, 'blocks premium label for dark pool');
   assert(darkPoolPremium.errors.some(e => e.code === 'DARKPOOL_PREMIUM_MISLABEL'), 'returns mislabel code');
+
+  const sweepPlaceholder = runValidationGate(
+    'JPM',
+    'DARK_POOL_PRINT',
+    validMetrics,
+    validThread,
+    { tradeTapeTimeline: '<svg><text>SWEEP</text></svg>' },
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+  assert(sweepPlaceholder.isPublishable === false, 'blocks SVGs that contain SWEEP placeholder tokens');
+  assert(sweepPlaceholder.errors.some(e => e.code === 'SVG_PLACEHOLDER_OR_NAN'), 'returns SVG placeholder code for SWEEP');
 });
 
 // ============================================================================
@@ -1034,6 +1075,25 @@ testGroup('validateSvgContent with UW artifacts', () => {
     'chart'
   );
   assert(validSource.isValid === true, 'accepts valid source text');
+});
+
+// ============================================================================
+// STRIKE GRID GENERATION TESTS
+// ============================================================================
+
+testGroup('strike grid generation', () => {
+  const spot = 0.5;
+  const grids = [
+    generateMockGammaExposureData('XYZ', spot).strikes,
+    generateMockPutCallOIData('XYZ', spot).strikes,
+    generateMockVolatilitySmileData('XYZ', spot).strikes,
+    generateMockGreeksSurfaceData('XYZ', spot).strikes,
+    generateMockMaxPainData('XYZ', spot).strikes,
+  ];
+
+  grids.forEach((grid, idx) => {
+    assert(grid.every(s => s > 0), `grid ${idx + 1} has only positive strikes`);
+  });
 });
 
 // ============================================================================

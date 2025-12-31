@@ -65,6 +65,18 @@ export function calculateSkewLabel(putIV: number, callIV: number): string {
   return 'Balanced smile - neutral market';
 }
 
+function buildStrikeGridAroundSpot(spotPrice: number, count: number, step: number): number[] {
+  const safeSpot = Math.max(spotPrice, 0.01);
+  const halfWindow = Math.floor(count / 2);
+  const rawStart = safeSpot - halfWindow * step;
+  const start = rawStart < 0.01 ? 0.01 : rawStart;
+
+  return Array.from({ length: count }, (_value, i) => {
+    const strike = start + i * step;
+    return Number(Math.max(0.01, strike).toFixed(2));
+  });
+}
+
 // Time synchronization context for consistent timestamps across all charts
 export interface SessionContext {
   asOfTime: Date;
@@ -827,11 +839,7 @@ export function generateIVTermStructureSvg(data: IVTermStructureData): string {
 }
 
 export function generateMockVolatilitySmileData(ticker: string, spotPrice: number): VolatilitySmileData {
-  const strikes: number[] = [];
-  const baseStrike = Math.round(spotPrice / 5) * 5;
-  for (let i = -10; i <= 10; i++) {
-    strikes.push(baseStrike + i * 5);
-  }
+  const strikes = buildStrikeGridAroundSpot(spotPrice, 21, 5);
   
   const currentIV: number[] = [];
   const priorIV: number[] = [];
@@ -862,8 +870,7 @@ export function generateMockVolatilitySmileData(ticker: string, spotPrice: numbe
 }
 
 export function generateMockIVSurfaceData(ticker: string, spotPrice: number, sentimentBias?: 'bullish' | 'bearish' | 'neutral'): IVSurfaceMapData {
-  const baseStrike = Math.round(spotPrice / 5) * 5;
-  const strikes = Array.from({ length: 10 }, (_, i) => baseStrike - 25 + i * 5);
+  const strikes = buildStrikeGridAroundSpot(spotPrice, 10, 5);
   const expiries = ['Jan 10', 'Jan 17', 'Jan 24', 'Feb 21', 'Mar 21'];
   
   const cells: IVSurfaceMapData['cells'] = [];
@@ -907,8 +914,7 @@ export const generateMockOptionsFlowData = generateMockIVSurfaceData;
 export const generateOptionsFlowHeatmapSvg = generateIVSurfaceMapSvg;
 
 export function generateMockPutCallOIData(ticker: string, spotPrice: number): PutCallOIData {
-  const baseStrike = Math.round(spotPrice / 5) * 5;
-  const strikes = Array.from({ length: 15 }, (_, i) => baseStrike - 35 + i * 5);
+  const strikes = buildStrikeGridAroundSpot(spotPrice, 15, 5);
   
   const callOI: number[] = [];
   const putOI: number[] = [];
@@ -1085,8 +1091,7 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
 }
 
 export function generateMockGammaExposureData(ticker: string, spotPrice: number, gammaBias?: 'long' | 'short'): GammaExposureData {
-  const baseStrike = Math.round(spotPrice / 5) * 5;
-  const strikes = Array.from({ length: 20 }, (_, i) => baseStrike - 45 + i * 5);
+  const strikes = buildStrikeGridAroundSpot(spotPrice, 20, 5);
   
   // Bias gamma based on modeled position (for truth gate consistency)
   // Short gamma = negative total exposure, Long gamma = positive total exposure
@@ -1369,8 +1374,7 @@ export function generateGreeksSurfaceSvg(data: GreeksSurfaceData): string {
 }
 
 export function generateMockGreeksSurfaceData(ticker: string, spotPrice: number, greekType: 'delta' | 'vega' = 'vega'): GreeksSurfaceData {
-  const baseStrike = Math.round(spotPrice / 5) * 5;
-  const strikes = Array.from({ length: 12 }, (_, i) => baseStrike - 25 + i * 5);
+  const strikes = buildStrikeGridAroundSpot(spotPrice, 12, 5);
   const expiries = ['Jan 10', 'Jan 17', 'Jan 24', 'Feb 21', 'Mar 21', 'Jun 20'];
 
   const values: number[][] = expiries.map((_, ei) => 
@@ -1769,8 +1773,7 @@ export function generateMaxPainSvg(data: MaxPainData): string {
 }
 
 export function generateMockMaxPainData(ticker: string, spotPrice: number): MaxPainData {
-  const baseStrike = Math.round(spotPrice / 5) * 5;
-  const strikes = Array.from({ length: 15 }, (_, i) => baseStrike - 35 + i * 5);
+  const strikes = buildStrikeGridAroundSpot(spotPrice, 15, 5);
   
   const callOI = strikes.map(s => {
     const dist = s - spotPrice;

@@ -35,6 +35,7 @@ interface TickerContext {
   analystTarget?: number;
   support?: number;
   resistance?: number;
+  tickerType?: string;
 }
 
 export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrint[], options: OptionsSweep[] }> {
@@ -171,7 +172,8 @@ export async function fetchPolygonQuote(ticker: string): Promise<TickerContext |
       marketCap: details.market_cap || 0,
       float: details.share_class_shares_outstanding || undefined,
       support: quote.l || undefined,
-      resistance: quote.h || undefined
+      resistance: quote.h || undefined,
+      tickerType: details.type || details.market || undefined
     };
   } catch (error) {
     console.error("Error fetching Polygon data:", error);

@@ -782,6 +782,7 @@ export class MemStorage implements IStorage {
         intervalMinutes: settings.intervalMinutes ?? 30,
         lastGenerated: settings.lastGenerated ?? null,
         autoGenerate: settings.autoGenerate ?? false,
+        stocksOnly: settings.stocksOnly ?? false,
       };
     } else {
       this.testModeSettings = { ...this.testModeSettings, ...settings };

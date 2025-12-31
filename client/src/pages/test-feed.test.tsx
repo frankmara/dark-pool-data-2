@@ -43,6 +43,11 @@ testGroup('TweetCard rendering', () => {
 
   assert(missingThreadHtml.length > 0, 'renders safely when thread is undefined');
 
+  const emptyThreadHtml = ReactDOMServer.renderToString(
+    <TweetCard post={{ ...basePost, thread: [] }} />
+  );
+  assert(emptyThreadHtml.includes('Thread content unavailable'), 'renders placeholder when thread is empty');
+
   const blockedPost = {
     ...basePost,
     thread: [],

@@ -305,6 +305,7 @@ export const testModeSettings = pgTable("test_mode_settings", {
   intervalMinutes: integer("interval_minutes").default(30),
   lastGenerated: text("last_generated"),
   autoGenerate: boolean("auto_generate").default(false),
+  stocksOnly: boolean("stocks_only").default(false),
 });
 
 export const insertTestModeSettingsSchema = createInsertSchema(testModeSettings).omit({ id: true });

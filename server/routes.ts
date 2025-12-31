@@ -778,7 +778,8 @@ export async function registerRoutes(
         settings = await storage.updateTestModeSettings({
           enabled: false,
           intervalMinutes: 30,
-          autoGenerate: false
+          autoGenerate: false,
+          stocksOnly: false
         });
       }
       res.json(settings);
@@ -810,6 +811,8 @@ export async function registerRoutes(
     try {
       let dataItem: { type: string; data: any; isLive: boolean };
       let isLiveData = false;
+      const settings = await storage.getTestModeSettings();
+      const stocksOnly = settings?.stocksOnly ?? false;
 
       // Try to fetch live data from Unusual Whales first
       const liveData = await fetchUnusualWhalesData();
@@ -830,7 +833,7 @@ export async function registerRoutes(
         });
       }
 
-      const post = await generateTestPost(dataItem, isLiveData);
+      const post = await generateTestPost(dataItem, isLiveData, { stocksOnly });
       if ((post as any).skipped) {
         return res.status(202).json(post);
       }
@@ -872,7 +875,11 @@ export function buildValidationFailureResponse(validationResult: ValidationGateR
   };
 }
 
-async function generateTestPost(item: { type: string; data: any }, isLiveData: boolean = false): Promise<any> {
+async function generateTestPost(
+  item: { type: string; data: any },
+  isLiveData: boolean = false,
+  options: { stocksOnly?: boolean } = {}
+): Promise<any> {
   const isOptions = item.type === 'options';
   const data = item.data;
   
@@ -889,6 +896,13 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
   const fallbackSpot = parseFloat(data.underlying_price || data.underlyingPrice || data.spot || '') || 0;
   const strikeAsSpot = data.strike && isFinite(Number(data.strike)) ? Number(data.strike) : 0;
   const eventSpot = polygonQuote?.price || fallbackSpot || strikeAsSpot || 100;
+
+  if (options.stocksOnly) {
+    const tickerType = polygonQuote?.tickerType?.toUpperCase();
+    if (tickerType && /ETF|ETN|ETP/.test(tickerType)) {
+      return { skipped: true, reason: 'Filtered non-equity ticker', ticker, tickerType };
+    }
+  }
   
   // Fetch REAL Polygon options chain data for the 4 institutional charts
   const optionsChain = await fetchPolygonOptionsChain(ticker);
