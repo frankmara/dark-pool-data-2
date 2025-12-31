@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,9 +68,18 @@ interface TweetCardProps {
   post: TestPost;
 }
 
-function TweetCard({ post }: TweetCardProps) {
-  const thread = post.thread as any[];
+export function TweetCard({ post }: TweetCardProps) {
+  const thread = Array.isArray(post.thread) ? post.thread as any[] : [];
   const engagement = post.engagement as any;
+
+  const validation = (post as any).validation as {
+    isPublishable?: boolean;
+    errors?: { code?: string; message?: string }[];
+    warnings?: { code?: string; message?: string }[];
+    summary?: string;
+  } | undefined;
+
+  const isBlocked = validation?.isPublishable === false;
   
   // Core charts
   const chartSvg = (post as any).chartSvg as string | undefined;
@@ -177,6 +186,42 @@ function TweetCard({ post }: TweetCardProps) {
 
   return (
     <div className="border-b border-border" data-testid={`test-post-${post.id}`}>
+      {isBlocked && (
+        <div className="p-4 border-b border-destructive/40 bg-destructive/10 flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-destructive">
+            <Badge variant="outline" className="bg-destructive/20 text-destructive border-destructive/60">Blocked</Badge>
+            <span className="text-sm font-medium">Validation failed for this post</span>
+          </div>
+          {validation?.summary && (
+            <span className="text-xs text-muted-foreground">{validation.summary}</span>
+          )}
+          {validation?.errors && validation.errors.length > 0 && (
+            <div className="text-xs text-destructive-foreground space-y-1" data-testid="validation-errors">
+              <div className="font-semibold text-destructive">Errors</div>
+              {validation.errors.map((error, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="font-mono">{error.code}</span>
+                  <span>{error.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {validation?.warnings && validation.warnings.length > 0 && (
+            <div className="text-xs text-amber-500 space-y-1" data-testid="validation-warnings">
+              <div className="font-semibold">Warnings</div>
+              {validation.warnings.map((warning, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="font-mono">{warning.code}</span>
+                  <span>{warning.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {thread.length === 0 && (
+            <div className="text-xs text-muted-foreground">Thread content withheld because validation failed.</div>
+          )}
+        </div>
+      )}
       {thread.map((tweet, idx) => (
         <div key={idx} className="p-4 hover-elevate">
           <div className="flex gap-3">

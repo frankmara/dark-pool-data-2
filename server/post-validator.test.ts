@@ -713,6 +713,23 @@ testGroup('runValidationGate', () => {
   assert(placeholderSvg.isPublishable === false, 'blocks placeholder text in SVG');
   assert(placeholderSvg.errors.some(e => e.code === 'SVG_PLACEHOLDER_OR_NAN'), 'uses placeholder/NAN code');
 
+  const unusualSvg = runValidationGate(
+    'QQQ',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    { volatilitySmile: '<svg><text>UNUSUAL</text></svg>' },
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+  assert(unusualSvg.isPublishable === false, 'blocks UNUSUAL placeholder in SVG');
+  assert(unusualSvg.errors.some(e => e.code === 'SVG_PLACEHOLDER_OR_NAN'), 'flags UNUSUAL placeholder code');
+
   // Dark pool premium mislabel detection
   const darkPoolPremium = runValidationGate(
     'JPM',
