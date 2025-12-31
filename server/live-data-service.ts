@@ -458,16 +458,16 @@ export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsC
 }
 
 // Helper to get IV smile data (IV by strike for a single expiry)
-export function getIVSmileData(chainData: OptionsChainData, expiry?: string): { strike: number; callIV: number; putIV: number }[] {
+export function getIVSmileData(chainData: OptionsChainData, expiry?: string): { strike: number; callIV?: number; putIV?: number }[] {
   const targetExpiry = expiry || chainData.expiries[0]; // Default to nearest expiry
   if (!targetExpiry) return [];
 
-  const smileData = new Map<number, { callIV: number; putIV: number }>();
+  const smileData = new Map<number, { callIV?: number; putIV?: number }>();
   
   chainData.contracts
     .filter(c => c.expiry === targetExpiry && c.impliedVolatility > 0)
     .forEach(c => {
-      const existing = smileData.get(c.strike) || { callIV: 0, putIV: 0 };
+      const existing = smileData.get(c.strike) || { callIV: undefined, putIV: undefined };
       if (c.type === 'call') {
         existing.callIV = c.impliedVolatility;
       } else {

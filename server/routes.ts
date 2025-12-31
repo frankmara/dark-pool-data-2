@@ -74,7 +74,7 @@ import {
   calculateModeledGammaLabel,
   getOrdinalSuffix
 } from "./chart-generator";
-import { IvNormalizationError, requireNormalizedIv } from "./iv-utils";
+import { IvNormalizationError, SmileDataMissingError, buildNormalizedSmilePoints } from "./iv-utils";
 
 const scannerConfigUpdateSchema = z.object({
   name: z.string().optional(),
@@ -810,39 +810,41 @@ export async function registerRoutes(
 
   app.post("/api/test-mode/generate", async (req, res) => {
     try {
-      let dataItem: { type: string; data: any; isLive: boolean };
-      let isLiveData = false;
       const settings = await storage.getTestModeSettings();
       const stocksOnly = settings?.stocksOnly ?? false;
 
       // Try to fetch live data from Unusual Whales first
       const liveData = await fetchUnusualWhalesData();
-      
-      if (liveData.darkPool.length > 0 || liveData.options.length > 0) {
-        isLiveData = true;
-        const allLive = [
-          ...liveData.darkPool.map(d => ({ type: 'dark_pool', data: d })),
-          ...liveData.options.map(o => ({ type: 'options', data: o }))
-        ];
-        const selected = allLive[Math.floor(Math.random() * allLive.length)];
-        dataItem = { ...selected, isLive: true };
-      } else {
+
+      if (liveData.darkPool.length === 0 && liveData.options.length === 0) {
         // No mock data - return error when no real data available
-        return res.status(503).json({ 
+        return res.status(503).json({
           error: "No live data available from Unusual Whales API. Please check your API key and try again.",
           details: "The API returned no dark pool or options flow data. This may be due to market hours, API rate limits, or connectivity issues."
         });
       }
 
-      const post = await generateTestPost(dataItem, isLiveData, { stocksOnly });
-      if ((post as any).skipped) {
-        return res.status(202).json(post);
+      const allCandidates = [
+        ...liveData.options.map(o => ({ type: 'options', data: o, isLive: true })),
+        ...liveData.darkPool.map(d => ({ type: 'dark_pool', data: d, isLive: true }))
+      ].slice(0, 20);
+
+      const generationResult = await generateFromCandidates(allCandidates, { stocksOnly });
+
+      if (generationResult.ok && generationResult.post) {
+        const created = await storage.createTestPost(generationResult.post);
+
+        await storage.updateTestModeSettings({ lastGenerated: new Date().toISOString() });
+
+        return res.status(201).json({ ok: true, ...created });
       }
-      const created = await storage.createTestPost(post);
-      
-      await storage.updateTestModeSettings({ lastGenerated: new Date().toISOString() });
-      
-      res.status(201).json(created);
+
+      return res.status(422).json({
+        ok: false,
+        reason: "NO_PUBLISHABLE_EVENTS",
+        failureStats: generationResult.failureStats,
+        summary: generationResult.lastFailureSummary
+      });
     } catch (error) {
       console.error("Failed to generate test post:", error);
       res.status(500).json({ error: "Failed to generate test post" });
@@ -874,6 +876,40 @@ export function buildValidationFailureResponse(validationResult: ValidationGateR
       summary: validationResult.summary
     }
   };
+}
+
+export async function generateFromCandidates(
+  candidates: { type: string; data: any; isLive: boolean }[],
+  options: { stocksOnly?: boolean },
+  generator: typeof generateTestPost = generateTestPost
+): Promise<{ ok: boolean; post?: any; failureStats: Record<string, number>; lastFailureSummary?: string }> {
+  const failureStats: Record<string, number> = {};
+  let lastFailureSummary: string | undefined;
+
+  for (const candidate of candidates) {
+    const post = await generator(candidate, candidate.isLive, options);
+
+    if ((post as any).skipped) {
+      continue;
+    }
+
+    const validation = (post as any).validation;
+    const isPublishable = validation?.isPublishable !== false && !(post as any).error;
+
+    if (isPublishable) {
+      return { ok: true, post, failureStats };
+    }
+
+    const errors = validation?.errors || [];
+    for (const error of errors) {
+      const code = error.code || 'UNKNOWN';
+      failureStats[code] = (failureStats[code] || 0) + 1;
+    }
+
+    lastFailureSummary = validation?.summary || (post as any).error;
+  }
+
+  return { ok: false, failureStats, lastFailureSummary };
 }
 
 async function generateTestPost(
@@ -1356,10 +1392,10 @@ async function generateTestPost(
       });
     } else {
       try {
-        const normalizedSmile = realSmileData.map(d => ({
-          strike: d.strike,
-          iv: requireNormalizedIv(d.callIV > 0 ? d.callIV : d.putIV, `volatilitySmile.${targetExpiry}.${d.strike}`)
-        }));
+        const normalizedSmile = buildNormalizedSmilePoints(
+          realSmileData.map(d => ({ strike: d.strike, callIV: d.callIV, putIV: d.putIV })),
+          5
+        );
 
         smileData = {
           ticker,
@@ -1373,7 +1409,15 @@ async function generateTestPost(
         };
         console.error(`[TestPost] Volatility Smile using ${realSmileData.length} strikes from Polygon for ${targetExpiry}, spot: $${eventSpotPrice.toFixed(2)}`);
       } catch (error) {
-        if (error instanceof IvNormalizationError) {
+        if (error instanceof SmileDataMissingError) {
+          preflightErrors.push({
+            isValid: false,
+            severity: 'error',
+            code: 'SMILE_DATA_MISSING',
+            message: `Insufficient valid IV points (${error.actualPoints}/${error.minPoints}) to render smile`,
+            field: 'volatilitySmile'
+          });
+        } else if (error instanceof IvNormalizationError) {
           preflightErrors.push({
             isValid: false,
             severity: 'error',
@@ -1680,4 +1724,3 @@ function getTwitterConfigured(): boolean {
   return !!(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET);
 }
 
-export { generateTestPost };

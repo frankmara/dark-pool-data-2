@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { TestPost, TestModeSettings } from "@shared/schema";
 import {
@@ -346,6 +346,7 @@ export default function TestFeed() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [stocksOnly, setStocksOnly] = useState(false);
+  const [generationFailure, setGenerationFailure] = useState<{ reason: string; failureStats?: Record<string, number>; summary?: string } | null>(null);
 
   const { data: posts = [], isLoading: postsLoading } = useQuery<TestPost[]>({
     queryKey: ['/api/test-mode/posts'],
@@ -369,14 +370,39 @@ export default function TestFeed() {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest('POST', '/api/test-mode/generate');
+      const res = await fetch('/api/test-mode/generate', {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data?.ok === false) {
+        const reason = data?.reason || data?.error || res.statusText || 'Failed to generate post';
+        const error: any = new Error(reason);
+        error.failureStats = data?.failureStats;
+        error.summary = data?.summary;
+        throw error;
+      }
+
+      return data;
     },
     onSuccess: () => {
+      setGenerationFailure(null);
       queryClient.invalidateQueries({ queryKey: ['/api/test-mode/posts'] });
       toast({ title: "Post generated", description: "New test post added to feed" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to generate post", variant: "destructive" });
+    onError: (error: any) => {
+      setGenerationFailure({
+        reason: error?.message || 'Failed to generate post',
+        failureStats: error?.failureStats,
+        summary: error?.summary
+      });
+      toast({
+        title: "Generation failed",
+        description: error?.message || 'Failed to generate post',
+        variant: "destructive"
+      });
     }
   });
 
@@ -504,8 +530,8 @@ export default function TestFeed() {
           <Separator className="my-3" />
           
           <div className="flex items-center gap-2">
-            <Button 
-              onClick={() => generateMutation.mutate()} 
+            <Button
+              onClick={() => generateMutation.mutate()}
               disabled={generateMutation.isPending}
               data-testid="button-generate-post"
             >
@@ -543,6 +569,19 @@ export default function TestFeed() {
               {posts.length} posts in feed
             </div>
           </div>
+          {generationFailure && (
+            <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm space-y-1" data-testid="generation-failure">
+              <div className="font-semibold text-destructive">Generation failed: {generationFailure.reason}</div>
+              {generationFailure.summary && (
+                <div className="text-destructive/80">{generationFailure.summary}</div>
+              )}
+              {generationFailure.failureStats && (
+                <div className="text-destructive/80 text-xs">
+                  Failure stats: {Object.entries(generationFailure.failureStats).map(([code, count]) => `${code} (${count})`).join(', ')}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
       
