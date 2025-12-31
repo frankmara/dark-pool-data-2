@@ -590,6 +590,146 @@ testGroup('runValidationGate', () => {
 
   assert(gammaMismatchResult.isPublishable === false, 'blocks gamma sign mismatch');
   assert(gammaMismatchResult.errors.some(e => e.code === 'GAMMA_SIGN_MISMATCH'), 'identifies gamma mismatch');
+
+  // Missing chain data should be blocked as mock/fallback usage
+  const missingChainResult = runValidationGate(
+    'MSFT',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    { volatilitySmile: '<svg></svg>' },
+    'call',
+    [],
+    150,
+    [],
+    [],
+    {},
+    'long',
+    { volatilitySmile: {
+      sourcesUsed: { polygon: false },
+      usedFallback: true,
+      missingFields: ['optionsChain'],
+      strikeCoverage: { nearSpotCount: 0, nearSpotPct: 0, minRequired: 5 },
+      ivStats: { min: 0, max: 0, median: 0, unit: 'percent' },
+      symbolsUsed: []
+    } }
+  );
+  assert(missingChainResult.isPublishable === false, 'blocks when chain data is missing');
+  assert(missingChainResult.errors.some(e => e.code === 'MOCK_DATA_USED'), 'flags mock usage');
+
+  // IV smile with implausible units
+  const ivImplausible = runValidationGate(
+    'AAPL',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    validCharts,
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long',
+    { volatilitySmile: {
+      sourcesUsed: { polygon: true },
+      usedFallback: false,
+      missingFields: [],
+      strikeCoverage: { nearSpotCount: 5, nearSpotPct: 0.5, minRequired: 5 },
+      ivStats: { min: 0.1, max: 3.5, median: 0.5, unit: 'decimal' },
+      symbolsUsed: []
+    } }
+  );
+  assert(ivImplausible.isPublishable === false, 'blocks implausible IV units');
+  assert(ivImplausible.errors.some(e => e.code === 'IV_IMPLAUSIBLE_UNITS'), 'returns IV implausible code');
+
+  // Spot well outside strike ladder coverage
+  const strikeRangeFail = runValidationGate(
+    'META',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    validCharts,
+    'call',
+    [494, 496, 500, 504, 508],
+    617,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long',
+    { putCallOILadder: {
+      sourcesUsed: { polygon: true },
+      usedFallback: false,
+      missingFields: [],
+      strikeCoverage: { nearSpotCount: 0, nearSpotPct: 0.05, minRequired: 5 },
+      ivStats: { min: 0, max: 0, median: 0, unit: 'percent' },
+      symbolsUsed: []
+    } }
+  );
+  assert(strikeRangeFail.isPublishable === false, 'blocks when spot outside ladder range');
+  assert(strikeRangeFail.errors.some(e => e.code === 'SPOT_OUTSIDE_STRIKE_RANGE'), 'returns spot coverage error');
+
+  // Correlation matrix duplicates
+  const corrDuplicate = runValidationGate(
+    'SPY',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    validCharts,
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long',
+    { correlationMatrix: {
+      sourcesUsed: { unusualWhales: true },
+      usedFallback: false,
+      missingFields: [],
+      strikeCoverage: { nearSpotCount: 5, nearSpotPct: 0.5, minRequired: 5 },
+      ivStats: { min: 0, max: 0, median: 0, unit: 'percent' },
+      symbolsUsed: ['AAPL', 'aapl', 'QQQ']
+    } }
+  );
+  assert(corrDuplicate.isPublishable === false, 'blocks duplicate symbols');
+  assert(corrDuplicate.errors.some(e => e.code === 'CORR_DUPLICATE_SYMBOLS'), 'returns duplicate symbol code');
+
+  // SVG placeholder detection
+  const placeholderSvg = runValidationGate(
+    'QQQ',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    { volatilitySmile: '<svg><text>UW</text></svg>' },
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+  assert(placeholderSvg.isPublishable === false, 'blocks placeholder text in SVG');
+  assert(placeholderSvg.errors.some(e => e.code === 'SVG_PLACEHOLDER_OR_NAN'), 'uses placeholder/NAN code');
+
+  // Dark pool premium mislabel detection
+  const darkPoolPremium = runValidationGate(
+    'JPM',
+    'DARK_POOL_PRINT',
+    validMetrics,
+    validThread,
+    { darkPool: '<svg><text>premium paid</text></svg>' },
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+  assert(darkPoolPremium.isPublishable === false, 'blocks premium label for dark pool');
+  assert(darkPoolPremium.errors.some(e => e.code === 'DARKPOOL_PREMIUM_MISLABEL'), 'returns mislabel code');
 });
 
 // ============================================================================
@@ -731,7 +871,7 @@ testGroup('validateSpotInRange (blocking)', () => {
   const farOutside = validateSpotInRange(50, [140, 145, 150, 155, 160]);
   assert(farOutside.isValid === false, 'rejects spot far outside range');
   assert(farOutside.severity === 'error', 'returns blocking error severity');
-  assert(farOutside.code === 'SPOT_OUT_OF_RANGE', 'returns correct error code');
+  assert(farOutside.code === 'SPOT_OUTSIDE_STRIKE_RANGE', 'returns correct error code');
 
   // Should pass when spot is just slightly outside (within tolerance)
   const slightlyOutside = validateSpotInRange(138, [140, 145, 150, 155, 160]);

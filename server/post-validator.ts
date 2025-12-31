@@ -24,11 +24,20 @@ export interface EventMetrics {
 }
 
 export interface ChartSpec {
-  type: 'volatilitySmile' | 'gammaExposure' | 'historicalVsImpliedVol' | 'greeksSurface' | 
-        'correlationMatrix' | 'maxPain' | 'ivRankHistogram' | 'optionsStockVolume' | 
+  type: 'volatilitySmile' | 'gammaExposure' | 'historicalVsImpliedVol' | 'greeksSurface' |
+        'correlationMatrix' | 'maxPain' | 'ivRankHistogram' | 'optionsStockVolume' |
         'tradeTapeTimeline' | 'flowSummary';
   svgContent: string;
   validationResult: ValidationResult;
+}
+
+export interface DataQualityReport {
+  sourcesUsed: Record<string, boolean>;
+  usedFallback: boolean;
+  missingFields: string[];
+  strikeCoverage: { nearSpotCount: number; nearSpotPct: number; minRequired: number };
+  ivStats: { min: number; max: number; median: number; unit: 'decimal' | 'percent' };
+  symbolsUsed: string[];
 }
 
 export interface CopyBlock {
@@ -254,7 +263,7 @@ export function validateSpotInRange(
     return {
       isValid: false,
       severity: 'error',  // UPGRADED FROM WARNING TO BLOCKING ERROR
-      code: 'SPOT_OUT_OF_RANGE',
+      code: 'SPOT_OUTSIDE_STRIKE_RANGE',
       message: `Spot price $${spot} is far outside gamma strike range [$${minStrike}-$${maxStrike}] - gamma panel invalid`,
       field: fieldName,
       value: { spot, minStrike, maxStrike, rangeMidpoint }
@@ -639,7 +648,7 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
     return {
       isValid: false,
       severity: 'error',
-      code: 'INVALID_SVG',
+      code: 'SVG_PLACEHOLDER_OR_NAN',
       message: `SVG validation failed for ${chartType}: ${errors.join(', ')}`,
       field: chartType,
       value: errors
@@ -758,7 +767,8 @@ export function runValidationGate(
   ivStrikes: number[] = [],
   oiStrikes: number[] = [],
   chartExpiries: Record<string, string> = {}, // Map of chartType -> expiry for expiry consistency checks
-  gammaExposurePosition?: 'long' | 'short'
+  gammaExposurePosition?: 'long' | 'short',
+  chartQualityReports: Record<string, DataQualityReport> = {}
 ): ValidationGateResult {
   const errors: ValidationResult[] = [];
   const warnings: ValidationResult[] = [];
@@ -799,11 +809,104 @@ export function runValidationGate(
       }
     }
 
+    if (eventType === 'DARK_POOL_PRINT' && /premium paid/i.test(svg)) {
+      errors.push({
+        isValid: false,
+        severity: 'error',
+        code: 'DARKPOOL_PREMIUM_MISLABEL',
+        message: `${chartType} contains "premium paid" label which is not valid for dark pool prints`,
+        field: chartType,
+        value: svg
+      });
+    }
+
     // Block corrupted IV scaling (e.g., 1700% labels) on volatility charts
-    if (chartType.toLowerCase().includes('volatility')) {
-      const ivScaleCheck = validateIvUnitScale(svg, chartType);
-      if (!ivScaleCheck.isValid) {
-        errors.push(ivScaleCheck);
+      if (chartType.toLowerCase().includes('volatility')) {
+        const ivScaleCheck = validateIvUnitScale(svg, chartType);
+        if (!ivScaleCheck.isValid) {
+          errors.push(ivScaleCheck);
+        }
+      }
+  });
+
+  // 3b. Validate chart quality reports
+  Object.entries(chartQualityReports).forEach(([chartType, quality]) => {
+    if (quality.usedFallback) {
+      errors.push({
+        isValid: false,
+        severity: 'error',
+        code: 'MOCK_DATA_USED',
+        message: `${chartType} used fallback/mock data`,
+        field: chartType,
+        value: quality
+      });
+    }
+
+    if (quality.missingFields && quality.missingFields.length > 0) {
+      errors.push({
+        isValid: false,
+        severity: 'error',
+        code: 'DATA_INSUFFICIENT_NO_FALLBACK',
+        message: `${chartType} missing required fields: ${quality.missingFields.join(', ')}`,
+        field: chartType,
+        value: quality.missingFields
+      });
+    }
+
+    if (quality.ivStats) {
+      const ivMax = quality.ivStats.unit === 'decimal' ? quality.ivStats.max * 100 : quality.ivStats.max;
+      if (ivMax > 300) {
+        errors.push({
+          isValid: false,
+          severity: 'error',
+          code: 'IV_IMPLAUSIBLE_UNITS',
+          message: `${chartType} shows implied volatility above 300% (max ${ivMax.toFixed(2)}%)`,
+          field: chartType,
+          value: quality.ivStats
+        });
+      }
+    }
+
+    if (quality.strikeCoverage) {
+      if (quality.strikeCoverage.nearSpotCount < quality.strikeCoverage.minRequired) {
+        errors.push({
+          isValid: false,
+          severity: 'error',
+          code: 'STRIKE_COVERAGE_INSUFFICIENT',
+          message: `${chartType} strike coverage insufficient near spot (${quality.strikeCoverage.nearSpotCount}/${quality.strikeCoverage.minRequired})`,
+          field: chartType,
+          value: quality.strikeCoverage
+        });
+      }
+      if (quality.strikeCoverage.nearSpotPct < 0.2) {
+        errors.push({
+          isValid: false,
+          severity: 'error',
+          code: 'SPOT_OUTSIDE_STRIKE_RANGE',
+          message: `${chartType} spot lies outside reliable strike ladder coverage`,
+          field: chartType,
+          value: quality.strikeCoverage
+        });
+      }
+    }
+
+    if (chartType.toLowerCase().includes('correlation') && quality.symbolsUsed) {
+      const normalized = quality.symbolsUsed.map(s => s.toUpperCase());
+      const unique = new Set<string>();
+      const duplicates = new Set<string>();
+      normalized.forEach(s => {
+        if (unique.has(s)) duplicates.add(s);
+        unique.add(s);
+      });
+      if (duplicates.size > 0) {
+        errors.push({
+          isValid: false,
+          severity: 'error',
+          code: 'CORR_DUPLICATE_SYMBOLS',
+          message: `${chartType} contains duplicate symbols: ${Array.from(duplicates).join(', ')}`,
+          field: chartType,
+          value: quality.symbolsUsed
+        });
       }
     }
   });
