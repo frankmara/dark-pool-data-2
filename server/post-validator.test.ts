@@ -41,7 +41,11 @@ import {
   generateMockGreeksSurfaceData,
   generateMockMaxPainData,
   generateMockPutCallOIData,
-  generateMockVolatilitySmileData
+  generateMockVolatilitySmileData,
+  generateTradeTapeTimelineSvg,
+  generateSectorCorrelationSvg,
+  generateVolatilitySmileSvg,
+  generateGammaExposureSvg
 } from './chart-generator';
 
 // ============================================================================
@@ -1094,6 +1098,77 @@ testGroup('strike grid generation', () => {
   grids.forEach((grid, idx) => {
     assert(grid.every(s => s > 0), `grid ${idx + 1} has only positive strikes`);
   });
+});
+
+// ============================================================================
+// SVG PLACEHOLDER + CORRECTNESS TESTS
+// ============================================================================
+
+testGroup('svg placeholder scrubbing', () => {
+  const greeksData = generateMockGreeksSurfaceData('XYZ', 100);
+  greeksData.whaleImpactZones.push({ strike: greeksData.strikes[0], expiry: greeksData.expiries[0], tag: 'SWEEP' });
+  try {
+    const svg = generateGreeksSurfaceSvg(greeksData);
+    assert(!/SWEEP/.test(svg), 'greeks surface removes SWEEP placeholder');
+  } catch (err) {
+    assert(true, 'greeks surface rejects placeholder tags');
+  }
+
+  const timelineSvg = generateTradeTapeTimelineSvg({
+    ticker: 'XYZ',
+    times: ['09:45', '10:00'],
+    cumulativePremium: [1, 2],
+    sentiment: ['bullish', 'bearish'],
+    whaleEvents: [{ timeIdx: 1, premium: 2, detail: 'UNUSUAL SWEEP' }],
+    putCallRatio: [1, 1]
+  });
+  assert(!/SWEEP/.test(timelineSvg) && !/UNUSUAL/.test(timelineSvg), 'timeline sanitizes placeholder sweep tags');
+});
+
+testGroup('gamma spot label uniqueness', () => {
+  const gammaSvg = generateGammaExposureSvg({
+    ticker: 'XYZ',
+    strikes: [95, 100, 105, 110, 115],
+    netGamma: [1, -2, 3, -1, 2],
+    gammaFlips: [],
+    totalGammaExposure: 1000,
+    spotPrice: 107,
+    asOfTimestamp: '2024-01-01'
+  });
+  const spotMatches = gammaSvg.match(/>SPOT</g) || [];
+  assert(spotMatches.length === 1, 'gamma chart renders exactly one SPOT label');
+});
+
+testGroup('correlation peers dedupe', () => {
+  const svg = generateSectorCorrelationSvg({
+    ticker: 'XYZ',
+    peers: ['AAPL', 'AAPL', 'MSFT'],
+    correlations: [
+      [1, 0.9, 0.5],
+      [0.9, 1, 0.4],
+      [0.5, 0.4, 1]
+    ],
+    decouplings: [],
+    asOfTimestamp: '2024-01-01'
+  });
+  const appleLabels = svg.match(/>AAPL</g) || [];
+  assert(appleLabels.length === 2, 'correlation matrix shows AAPL once per axis');
+});
+
+testGroup('smile interpretation alignment', () => {
+  const svg = generateVolatilitySmileSvg({
+    ticker: 'XYZ',
+    expiry: '2025-01-17',
+    strikes: [90, 95, 100, 105, 110],
+    currentIV: [50, 45, 40, 35, 30],
+    priorIV: [45, 42, 38, 34, 32],
+    spotPrice: 100,
+    skewPercentile: 82,
+    anomalyStrikes: [],
+    asOfTimestamp: '2024-01-01'
+  });
+
+  assert(!/neutral market/i.test(svg), 'smile interpretation avoids neutral wording when skew percentile is high');
 });
 
 // ============================================================================

@@ -1177,13 +1177,13 @@ async function generateTestPost(
       },
       {
         index: 7,
-        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${maxPainLevel}, acting as a ${maxPainLevel > price ? 'magnet above' : 'ceiling at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
+        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain estimate near $${maxPainLevel} signals a potential pin zone into expiry.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
         type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${modeledGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"When IV > HV + gamma ${modeledGammaPosition} = expect ${modeledGammaPosition === 'short' ? 'acceleration' : 'mean reversion'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${modeledGammaLabel}\n• Positioning: ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"When IV > HV + gamma ${modeledGammaPosition} = expect ${modeledGammaPosition === 'short' ? 'acceleration' : 'mean reversion'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }
@@ -1239,13 +1239,13 @@ async function generateTestPost(
       },
       {
         index: 7,
-        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain sits near $${maxPainLevel}, acting as ${maxPainLevel > price ? 'a magnet above' : 'an anchor at'} current levels.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
+        content: `7/8 — Watch / Confirm / Invalidate\n\nMax pain estimate near $${maxPainLevel} highlights a potential pin zone into expiry.\n\nWatch: Break above $${watchLevel} with volume\nConfirm: Close above $${confirmLevel} = ${modeledGammaPosition === 'short' ? 'gamma squeeze setup' : 'breakout continuation'}\nInvalidate: Below $${invalidateLevel} = thesis fails\n\n$${ticker} remains ${parseFloat(avgCorrelation) > 0.6 ? 'correlated with' : 'decoupled from'} ${sector} — context matters.`,
         type: 'context',
         chartRef: 'maxPain'
       },
       {
         index: 8,
-        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${modeledGammaLabel}\n• Institutions: positioning ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"Dark pool prints matter most when they align with gamma mechanics + options positioning. Here, ${flowLabel.includes('mixed') ? 'they don\'t — yet' : 'they do'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
+        content: `8/8 — Synthesis (The lesson)\n\nCurrent read: ${flowLabel}.\n\n• Modeled Gamma: ${modeledGammaLabel}\n• Positioning: ${convictionLabel}\n• Skew: ${ivPercentile > 75 ? 'elevated, watch for vol crush' : 'room to expand'}\n\nMental model to save:\n"Dark pool prints matter most when they align with gamma mechanics + options positioning. Here, ${flowLabel.includes('mixed') ? 'they don\'t — yet' : 'they do'}."\n\nWhat's your read — does $${ticker} break $${confirmLevel} this week, or fade back to $${invalidateLevel}?`,
         type: 'synthesis',
         chartRef: 'optionsStockVolume'
       }

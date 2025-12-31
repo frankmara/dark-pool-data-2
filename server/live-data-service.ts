@@ -354,8 +354,8 @@ export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsC
       return null;
     }
 
-    // Get spot price from first result's underlying asset
-    const spotPrice = results[0]?.underlying_asset?.price || 0;
+    // Get spot price from first result's underlying asset (fallback to median strike)
+    const rawSpot = results[0]?.underlying_asset?.price || 0;
     
     // Parse contracts
     const contracts: OptionsContract[] = results.map((r: any) => {
@@ -383,8 +383,21 @@ export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsC
     }).filter((c: OptionsContract) => c.strike > 0 && c.expiry);
 
     // Aggregate data for charts
-    const strikes = Array.from(new Set(contracts.map(c => c.strike))).sort((a, b) => a - b);
-    const expiries = Array.from(new Set(contracts.map(c => c.expiry))).sort();
+    const spotFallback = rawSpot || (contracts.length ? contracts.map(c => c.strike).sort((a, b) => a - b)[Math.floor(contracts.length / 2)] : 0);
+    const spotPrice = spotFallback;
+
+    // Focus strikes around spot for gamma/ladder accuracy
+    const nearContracts = contracts
+      .map(c => ({ ...c, distance: Math.abs(c.strike - spotPrice) }))
+      .sort((a, b) => a.distance - b.distance);
+
+    const primaryWindow = nearContracts.filter(c => c.distance <= spotPrice * 0.15);
+    const selectedContracts = primaryWindow.length >= 5
+      ? primaryWindow
+      : nearContracts.slice(0, Math.max(5, Math.min(nearContracts.length, 40)));
+
+    const strikes = Array.from(new Set(selectedContracts.map(c => c.strike))).sort((a, b) => a - b);
+    const expiries = Array.from(new Set(selectedContracts.map(c => c.expiry))).sort();
     
     // Use plain objects for JSON serialization (Maps don't serialize properly)
     const callOIByStrike: Record<number, number> = {};
@@ -393,7 +406,7 @@ export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsC
     const ivByExpiry: Record<string, number> = {};
 
     // Aggregate OI and gamma by strike
-    contracts.forEach(c => {
+    selectedContracts.forEach(c => {
       if (c.type === 'call') {
         callOIByStrike[c.strike] = (callOIByStrike[c.strike] || 0) + c.openInterest;
       } else {
@@ -406,10 +419,10 @@ export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsC
 
     // Average IV by expiry (for term structure)
     const ivSumByExpiry: Record<string, { sum: number; count: number }> = {};
-    contracts.forEach(c => {
+    selectedContracts.forEach(c => {
       if (c.impliedVolatility > 0) {
         const existing = ivSumByExpiry[c.expiry] || { sum: 0, count: 0 };
-        ivSumByExpiry[c.expiry] = { 
+        ivSumByExpiry[c.expiry] = {
           sum: existing.sum + c.impliedVolatility, 
           count: existing.count + 1 
         };
