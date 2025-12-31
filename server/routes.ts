@@ -1454,7 +1454,11 @@ async function generateTestPost(item: { type: string; data: any }, isLiveData: b
     svgCharts,
     skewDirection as 'put' | 'call',
     gammaDataForThread.strikes || [],
-    basePrice
+    basePrice,
+    smileData?.strikes || [],
+    oiData?.strikes || [],
+    { volatilitySmile: smileData?.expiry } as Record<string, string>,
+    modeledGammaPosition as 'long' | 'short'
   );
 
   return {
