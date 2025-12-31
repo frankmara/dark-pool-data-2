@@ -72,6 +72,8 @@ export function TweetCard({ post }: TweetCardProps) {
   const thread = Array.isArray(post.thread) ? post.thread as any[] : [];
   const engagement = post.engagement as any;
 
+  const hasThread = thread.length > 0;
+
   const validation = (post as any).validation as {
     isPublishable?: boolean;
     errors?: { code?: string; message?: string }[];
@@ -141,6 +143,10 @@ export function TweetCard({ post }: TweetCardProps) {
       case 7: return 'Options/Stock Volume';
       default: return '';
     }
+  };
+
+  const normalizeChartLabel = (label: string): string => {
+    return /PostT[a-z]+T[a-z]+/i.test(label) ? 'Trade Tape Timeline' : label;
   };
 
   const getChartExplanation = (idx: number): string => {
@@ -222,6 +228,10 @@ export function TweetCard({ post }: TweetCardProps) {
           )}
         </div>
       )}
+      {!hasThread && !isBlocked && (
+        <div className="p-4 text-xs text-muted-foreground">Thread content unavailable.</div>
+      )}
+
       {thread.map((tweet, idx) => (
         <div key={idx} className="p-4 hover-elevate">
           <div className="flex gap-3">
@@ -273,10 +283,10 @@ export function TweetCard({ post }: TweetCardProps) {
               {getChartForIndex(idx) && (
                 <div className="mt-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium text-muted-foreground">{getChartLabel(idx)}</span>
+                    <span className="text-xs font-medium text-muted-foreground">{normalizeChartLabel(getChartLabel(idx))}</span>
                     <span className="text-xs text-muted-foreground/60">{getChartExplanation(idx)}</span>
                   </div>
-                  <div 
+                  <div
                     className="rounded-lg border border-border overflow-hidden"
                     dangerouslySetInnerHTML={{ __html: getChartForIndex(idx)! }}
                     data-testid={`chart-image-${idx}`}
@@ -335,6 +345,7 @@ export default function TestFeed() {
   const [intervalMinutes, setIntervalMinutes] = useState("30");
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [countdown, setCountdown] = useState(0);
+  const [stocksOnly, setStocksOnly] = useState(false);
 
   const { data: posts = [], isLoading: postsLoading } = useQuery<TestPost[]>({
     queryKey: ['/api/test-mode/posts'],
@@ -344,6 +355,17 @@ export default function TestFeed() {
   const { data: settings } = useQuery<TestModeSettings>({
     queryKey: ['/api/test-mode/settings'],
   });
+
+  useEffect(() => {
+    if (settings) {
+      if (settings.intervalMinutes) {
+        setIntervalMinutes(String(settings.intervalMinutes));
+      }
+      if (typeof settings.stocksOnly === 'boolean') {
+        setStocksOnly(settings.stocksOnly);
+      }
+    }
+  }, [settings]);
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -376,6 +398,11 @@ export default function TestFeed() {
       queryClient.invalidateQueries({ queryKey: ['/api/test-mode/settings'] });
     }
   });
+
+  const handleStocksOnlyToggle = (checked: boolean) => {
+    setStocksOnly(checked);
+    updateSettingsMutation.mutate({ stocksOnly: checked });
+  };
 
   useEffect(() => {
     if (autoGenerate) {
@@ -451,8 +478,8 @@ export default function TestFeed() {
               
               <div className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5">
                 <span className="text-sm text-muted-foreground">Auto</span>
-                <Switch 
-                  checked={autoGenerate} 
+                <Switch
+                  checked={autoGenerate}
                   onCheckedChange={setAutoGenerate}
                   data-testid="switch-auto-generate"
                 />
@@ -461,6 +488,15 @@ export default function TestFeed() {
                     {formatCountdown(countdown)}
                   </Badge>
                 )}
+              </div>
+
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5">
+                <span className="text-sm text-muted-foreground">Stocks only</span>
+                <Switch
+                  checked={stocksOnly}
+                  onCheckedChange={handleStocksOnlyToggle}
+                  data-testid="switch-stocks-only"
+                />
               </div>
             </div>
           </div>

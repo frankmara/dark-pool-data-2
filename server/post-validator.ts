@@ -95,6 +95,7 @@ const SUSPICIOUS_PATTERNS = [
   /(.)\1{5,}/g,  // 5+ repeated characters (garbled text detection)
   /\bUNUSUAL\b/g,  // P0: Placeholder text in charts that should be replaced with real values
   /\bUW\b/g,  // P0: "UW" artifact from Unusual Whales data that wasn't replaced
+  /\bSWEEP\b/g, // P0: Placeholder sweep tag that should be replaced with real context
   /\bN\/A\b(?!\s*<\/text>)/g,  // P0: Standalone "N/A" in chart content (except in valid text contexts)
 ];
 
@@ -365,6 +366,29 @@ export function validateArrayNoNaN(arr: number[], fieldName: string): Validation
   return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
 }
 
+export function validatePositiveFiniteArray(arr: number[], fieldName: string): ValidationResult {
+  const invalidIndices: number[] = [];
+
+  arr.forEach((val, i) => {
+    if (!isFinite(val) || val <= 0) {
+      invalidIndices.push(i);
+    }
+  });
+
+  if (invalidIndices.length > 0) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'INVALID_STRIKE_VALUE',
+      message: `${fieldName} contains non-finite or non-positive strikes at indices ${invalidIndices.slice(0, 5).join(', ')}`,
+      field: fieldName,
+      value: { invalidCount: invalidIndices.length, sample: invalidIndices.slice(0, 5) }
+    };
+  }
+
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+}
+
 // ============================================================================
 // COPY LOGIC VALIDATOR
 // ============================================================================
@@ -595,7 +619,7 @@ export function validateExpiryConsistency(
 
 export function validateSvgContent(svgContent: string, chartType: string): ValidationResult {
   const errors: string[] = [];
-  
+
   // Check for visible NaN in SVG text elements (matches ">NaN<" or ">Value: NaN<" etc)
   if (/>NaN</i.test(svgContent) || />.*\bNaN\b.*</i.test(svgContent)) {
     errors.push('SVG contains visible "NaN" text');
@@ -604,6 +628,10 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
   // Check for undefined in SVG (matches ">undefined<" or ">Value: undefined<" etc)
   if (/>undefined</i.test(svgContent) || />.*\bundefined\b.*</i.test(svgContent) || /=\"undefined\"/i.test(svgContent)) {
     errors.push('SVG contains "undefined"');
+  }
+
+  if (/>.*\bInfinity\b.*</i.test(svgContent)) {
+    errors.push('SVG contains Infinity');
   }
   
   // P0: Check for "UNUSUAL" placeholder text that should be replaced with real values
@@ -625,7 +653,19 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
       errors.push('SVG contains multiple "N/A" artifacts - data placeholders not replaced');
     }
   }
-  
+
+  const placeholderTokens = ['UW', 'UNUSUAL', 'SWEEP'];
+  placeholderTokens.forEach(token => {
+    const tokenRegex = new RegExp(`\\b${token}\\b`, 'i');
+    if (tokenRegex.test(svgContent)) {
+      errors.push(`SVG contains placeholder token "${token}"`);
+    }
+  });
+
+  if (/INSUFFICIENT DATA/i.test(svgContent)) {
+    errors.push('SVG reports insufficient data');
+  }
+
   // Check for garbled labels
   for (const pattern of LABEL_CORRUPTION_PATTERNS) {
     if (pattern.test(svgContent)) {
@@ -778,15 +818,42 @@ export function runValidationGate(
 ): ValidationGateResult {
   const errors: ValidationResult[] = [];
   const warnings: ValidationResult[] = [];
-  
+
   // 1. Validate event-specific requirements
-  const eventErrors = eventType === 'OPTIONS_SWEEP' 
+  const eventErrors = eventType === 'OPTIONS_SWEEP'
     ? validateOptionsSwepEvent(metrics)
     : validateDarkPoolEvent(metrics);
   errors.push(...eventErrors);
-  
+
+  const normalizedThread = Array.isArray(threadContent) ? threadContent : [];
+  if (normalizedThread.length === 0) {
+    errors.push({
+      isValid: false,
+      severity: 'error',
+      code: 'THREAD_MISSING',
+      message: 'Thread content missing or empty',
+      field: 'thread'
+    });
+  }
+
+  const strikeArrays: Array<{ values: number[]; field: string }> = [
+    { values: strikes, field: 'strikes' },
+    { values: ivStrikes, field: 'ivStrikes' },
+    { values: oiStrikes, field: 'oiStrikes' }
+  ];
+
+  strikeArrays.forEach(({ values, field }) => {
+    if (values && values.length > 0) {
+      const nanCheck = validateArrayNoNaN(values, field);
+      if (!nanCheck.isValid) errors.push(nanCheck);
+
+      const positiveCheck = validatePositiveFiniteArray(values, field);
+      if (!positiveCheck.isValid) errors.push(positiveCheck);
+    }
+  });
+
   // 2. Validate thread content
-  threadContent.forEach((content, i) => {
+  normalizedThread.forEach((content, i) => {
     const nanCheck = validateNoSuspiciousStrings(content, `thread[${i}]`);
     if (!nanCheck.isValid) errors.push(nanCheck);
     
