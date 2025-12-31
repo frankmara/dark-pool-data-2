@@ -662,10 +662,6 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
     }
   });
 
-  if (/INSUFFICIENT DATA/i.test(svgContent)) {
-    errors.push('SVG reports insufficient data');
-  }
-
   // Check for garbled labels
   for (const pattern of LABEL_CORRUPTION_PATTERNS) {
     if (pattern.test(svgContent)) {

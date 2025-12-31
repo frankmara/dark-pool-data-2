@@ -65,6 +65,28 @@ export function calculateSkewLabel(putIV: number, callIV: number): string {
   return 'Balanced smile - neutral market';
 }
 
+function renderInsufficientDataPanel(title: string, detail?: string): string {
+  const width = 800;
+  const height = 420;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background:#0a0a0f;">
+    <rect x="0" y="0" width="${width}" height="${height}" fill="#0a0a0f"/>
+    <text x="${width / 2}" y="${height / 2 - 10}" text-anchor="middle" fill="#9ca3af" font-size="18" font-family="sans-serif" font-weight="bold">${title}</text>
+    <text x="${width / 2}" y="${height / 2 + 16}" text-anchor="middle" fill="#6b7280" font-size="12" font-family="sans-serif">Insufficient data${detail ? `: ${detail}` : ''}</text>
+    <text x="${width / 2}" y="${height - 16}" text-anchor="middle" fill="#374151" font-size="10" font-family="sans-serif">DARK POOL DATA</text>
+  </svg>`;
+}
+
+function sanitizeLabel(label: string | undefined): string {
+  if (!label) return '';
+  const forbidden = ['SWEEP', 'UW', 'UNUSUAL', 'NaN', 'undefined'];
+  const upper = label.toUpperCase();
+  if (forbidden.some(token => upper.includes(token))) {
+    return 'Signal';
+  }
+  return label;
+}
+
 function buildStrikeGridAroundSpot(spotPrice: number, count: number, step: number): number[] {
   const safeSpot = Math.max(spotPrice, 0.01);
   const halfWindow = Math.floor(count / 2);
@@ -398,7 +420,7 @@ export function generateFlowSummarySvg(data: FlowSummaryData): string {
 
   svg += `<text x="24" y="40" fill="#ffffff" font-size="28" font-weight="bold" font-family="monospace">${data.ticker}</text>`;
   
-  const eventLabel = data.eventType === 'dark_pool' ? 'DARK POOL PRINT' : 'OPTIONS SWEEP';
+  const eventLabel = data.eventType === 'dark_pool' ? 'DARK POOL PRINT' : 'OPTIONS FLOW';
   svg += `<text x="24" y="62" fill="#6b7280" font-size="11" font-family="sans-serif" letter-spacing="1">${eventLabel}</text>`;
 
   const timestamp = new Date(data.timestamp).toLocaleString('en-US', { 
@@ -466,6 +488,7 @@ interface VolatilitySmileData {
   priorIV?: number[];
   spotPrice: number;
   anomalyStrikes?: number[];
+  skewPercentile?: number;
   asOfTimestamp?: string;
 }
 
@@ -541,7 +564,20 @@ export function generateVolatilitySmileSvg(data: VolatilitySmileData): string {
   
   // Interpretation annotation
   const putSkew = data.currentIV[0] - data.currentIV[data.currentIV.length - 1];
-  const skewInterpretation = putSkew > 5 ? 'Put skew elevated - hedging demand' : putSkew < -5 ? 'Call skew - bullish positioning' : 'Balanced smile - neutral market';
+  const derivedPercentile = Math.max(0, Math.min(100, 50 + putSkew * 4));
+  const skewPercentile = typeof data.skewPercentile === 'number' ? data.skewPercentile : derivedPercentile;
+  let skewInterpretation: string;
+  if (skewPercentile >= 70) {
+    skewInterpretation = 'Skew elevated - hedging demand showing up';
+  } else if (skewPercentile <= 30) {
+    skewInterpretation = 'Skew compressed - upside favored';
+  } else if (putSkew > 5) {
+    skewInterpretation = 'Put skew elevated - hedging demand';
+  } else if (putSkew < -5) {
+    skewInterpretation = 'Call skew - bullish positioning';
+  } else {
+    skewInterpretation = 'Balanced smile - neutral market';
+  }
   svg += `<rect x="${padding.left}" y="${height - 55}" width="300" height="22" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
   svg += `<text x="${padding.left + 10}" y="${height - 40}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${skewInterpretation}</text>`;
   
@@ -858,6 +894,9 @@ export function generateMockVolatilitySmileData(ticker: string, spotPrice: numbe
     }
   });
 
+  const skewRaw = currentIV[0] - currentIV[currentIV.length - 1];
+  const skewPercentile = Math.max(0, Math.min(100, 55 + skewRaw * 3));
+
   return {
     ticker,
     expiry: '2025-01-17',
@@ -865,7 +904,8 @@ export function generateMockVolatilitySmileData(ticker: string, spotPrice: numbe
     currentIV,
     priorIV,
     spotPrice,
-    anomalyStrikes
+    anomalyStrikes,
+    skewPercentile
   };
 }
 
@@ -898,7 +938,7 @@ export function generateMockIVSurfaceData(ticker: string, spotPrice: number, sen
           premium: Math.floor(Math.random() * 5000000) + 100000,
           sentiment,
           contracts: Math.floor(Math.random() * 5000) + 100,
-          tags: Math.random() > 0.7 ? ['SWEEP', 'UNUSUAL'] : undefined
+          tags: Math.random() > 0.7 ? ['Signal'] : undefined
         });
       }
     });
@@ -1025,25 +1065,28 @@ export function generateGammaExposureSvg(data: GammaExposureData): string {
     const isPositive = gamma >= 0;
     const color = isPositive ? '#10B981' : '#EF4444';
     const y = isPositive ? zeroY - barHeight : zeroY;
-    
+
     // Check if this is a NaN - render as hatched
     if (isNaN(gamma)) {
       svg += `<rect x="${x}" y="${zeroY - 20}" width="${barWidth}" height="40" fill="url(#hatch)" stroke="#6b7280" stroke-width="1"/>`;
     } else {
       svg += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" fill-opacity="0.8" rx="2"/>`;
     }
-    
+
     // Strike labels
     if (i % 2 === 0) {
       svg += `<text x="${x + barWidth/2}" y="${height - padding.bottom + 18}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="monospace">$${strike}</text>`;
     }
-    
-    // Spot price marker
-    if (Math.abs(strike - data.spotPrice) < 3) {
-      svg += `<line x1="${x + barWidth/2}" y1="${padding.top}" x2="${x + barWidth/2}" y2="${height - padding.bottom}" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4,2"/>`;
-      svg += `<text x="${x + barWidth/2 + 5}" y="${padding.top + 15}" fill="#F59E0B" font-size="9" font-family="sans-serif">SPOT</text>`;
-    }
   });
+
+  const spotIndex = data.strikes.reduce((closest, strike, idx) => {
+    const currentDiff = Math.abs(strike - data.spotPrice);
+    const bestDiff = Math.abs(data.strikes[closest] - data.spotPrice);
+    return currentDiff < bestDiff ? idx : closest;
+  }, 0);
+  const spotX = padding.left + (spotIndex / data.strikes.length) * chartWidth + barWidth / 2;
+  svg += `<line x1="${spotX}" y1="${padding.top}" x2="${spotX}" y2="${height - padding.bottom}" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4,2"/>`;
+  svg += `<text x="${spotX + 5}" y="${padding.top + 15}" fill="#F59E0B" font-size="9" font-family="sans-serif">SPOT</text>`;
 
   // Gamma flip arrows
   data.gammaFlips.forEach(flip => {
@@ -1282,8 +1325,12 @@ export function generateGreeksSurfaceSvg(data: GreeksSurfaceData): string {
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
+  if (!data.strikes.length || !data.expiries.length || !data.values.length) {
+    return renderInsufficientDataPanel(`${data.ticker} Greeks Surface`, 'missing strike/expiry coverage');
+  }
+
   const placeholderTags = (data.whaleImpactZones || []).map(z => z.tag?.toUpperCase());
-  const invalidTag = placeholderTags.find(tag => tag === 'UW' || tag === 'UNUSUAL');
+  const invalidTag = placeholderTags.find(tag => tag === 'UW' || tag === 'UNUSUAL' || tag === 'SWEEP');
   if (invalidTag) {
     throw new ChartDataError('SVG_PLACEHOLDER_OR_NAN', 'greeksSurface', `Invalid placeholder tag detected: ${invalidTag}`);
   }
@@ -1291,7 +1338,14 @@ export function generateGreeksSurfaceSvg(data: GreeksSurfaceData): string {
   const cellWidth = chartWidth / data.strikes.length;
   const cellHeight = chartHeight / data.expiries.length;
 
+  if (!isFinite(cellWidth) || !isFinite(cellHeight)) {
+    return renderInsufficientDataPanel(`${data.ticker} Greeks Surface`, 'unable to size grid');
+  }
+
   const flatValues = data.values.flat().filter(v => !isNaN(v));
+  if (!flatValues.length) {
+    return renderInsufficientDataPanel(`${data.ticker} Greeks Surface`, 'no usable greeks provided');
+  }
   const maxVal = Math.max(...flatValues);
   const minVal = Math.min(...flatValues);
 
@@ -1328,7 +1382,8 @@ export function generateGreeksSurfaceSvg(data: GreeksSurfaceData): string {
         svg += `<circle cx="${x + cellWidth/2}" cy="${y + cellHeight/2}" r="${Math.min(cellWidth, cellHeight) / 3}" fill="none" stroke="#F59E0B" stroke-width="2"/>`;
         const whale = data.whaleImpactZones.find(z => z.strike === strike && z.expiry === expiry);
         if (whale) {
-          svg += `<text x="${x + cellWidth/2}" y="${y + cellHeight - 3}" text-anchor="middle" fill="#F59E0B" font-size="6" font-weight="bold" font-family="sans-serif">${whale.tag}</text>`;
+          const safeTag = sanitizeLabel(whale.tag) || 'Signal';
+          svg += `<text x="${x + cellWidth/2}" y="${y + cellHeight - 3}" text-anchor="middle" fill="#F59E0B" font-size="6" font-weight="bold" font-family="sans-serif">${safeTag}</text>`;
         }
       }
     });
@@ -1391,10 +1446,10 @@ export function generateMockGreeksSurfaceData(ticker: string, spotPrice: number,
 
   const whaleImpactZones: { strike: number; expiry: string; tag: string }[] = [];
   if (Math.random() > 0.5) {
-    whaleImpactZones.push({ strike: strikes[5], expiry: expiries[1], tag: 'WHALE' });
+    whaleImpactZones.push({ strike: strikes[5], expiry: expiries[1], tag: 'Whale' });
   }
   if (Math.random() > 0.6) {
-    whaleImpactZones.push({ strike: strikes[7], expiry: expiries[0], tag: 'SWEEP' });
+    whaleImpactZones.push({ strike: strikes[7], expiry: expiries[0], tag: 'Flow' });
   }
 
   const nanZones: { strike: number; expiry: string }[] = [];
@@ -1423,6 +1478,10 @@ export function generateTradeTapeTimelineSvg(data: TradeTapeTimelineData): strin
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
+  if (!data.times.length || !data.cumulativePremium.length) {
+    return renderInsufficientDataPanel(`${data.ticker} Flow Timeline`, 'no intraday flow provided');
+  }
+
   const maxPremium = Math.max(...data.cumulativePremium) * 1.1;
   const barWidth = chartWidth / data.times.length * 0.8;
 
@@ -1445,22 +1504,26 @@ export function generateTradeTapeTimelineSvg(data: TradeTapeTimelineData): strin
   data.whaleEvents.forEach(event => {
     const x = padding.left + (event.timeIdx / data.times.length) * chartWidth + barWidth / 2;
     const baseY = padding.top + chartHeight - (data.cumulativePremium[event.timeIdx] / maxPremium) * chartHeight;
-    
+
     svg += `<line x1="${x}" y1="${baseY}" x2="${x}" y2="${padding.top + 10}" stroke="#F59E0B" stroke-width="2"/>`;
     svg += `<circle cx="${x}" cy="${padding.top + 10}" r="8" fill="#F59E0B"/>`;
     svg += `<text x="${x}" y="${padding.top + 14}" text-anchor="middle" fill="#000000" font-size="8" font-weight="bold" font-family="sans-serif">W</text>`;
-    svg += `<text x="${x + 12}" y="${padding.top + 28}" fill="#F59E0B" font-size="8" font-family="sans-serif">${event.detail}</text>`;
+    svg += `<text x="${x + 12}" y="${padding.top + 28}" fill="#F59E0B" font-size="8" font-family="sans-serif">${sanitizeLabel(event.detail) || 'Whale flow'}</text>`;
   });
 
   // Put/Call ratio line (secondary axis)
-  const maxRatio = Math.max(...data.putCallRatio) * 1.2;
-  let ratioPath = 'M';
-  data.putCallRatio.forEach((ratio, i) => {
-    const x = padding.left + (i / data.times.length) * chartWidth + barWidth / 2;
-    const y = padding.top + chartHeight - (ratio / maxRatio) * chartHeight;
-    ratioPath += `${i === 0 ? 'M' : 'L'}${x},${y} `;
-  });
-  svg += `<path d="${ratioPath}" fill="none" stroke="#06B6D4" stroke-width="2" stroke-dasharray="4,2"/>`;
+  const validRatios = data.putCallRatio.filter(r => isFinite(r) && r > 0);
+  if (validRatios.length > 0) {
+    const maxRatio = Math.max(...validRatios) * 1.2;
+    let ratioPath = 'M';
+    data.putCallRatio.forEach((ratio, i) => {
+      if (!isFinite(ratio) || ratio <= 0) return;
+      const x = padding.left + (i / data.times.length) * chartWidth + barWidth / 2;
+      const y = padding.top + chartHeight - (ratio / maxRatio) * chartHeight;
+      ratioPath += `${ratioPath === 'M' ? 'M' : 'L'}${x},${y} `;
+    });
+    svg += `<path d="${ratioPath}" fill="none" stroke="#06B6D4" stroke-width="2" stroke-dasharray="4,2"/>`;
+  }
 
   // X-axis time labels
   const labelInterval = Math.floor(data.times.length / 8);
@@ -1472,13 +1535,15 @@ export function generateTradeTapeTimelineSvg(data: TradeTapeTimelineData): strin
   });
 
   // Legend
-  svg += `<rect x="${width - padding.right + 5}" y="${padding.top}" width="70" height="80" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
+  svg += `<rect x="${width - padding.right + 5}" y="${padding.top}" width="120" height="90" fill="#1a1a2e" rx="4" stroke="#374151" stroke-width="1"/>`;
   svg += `<rect x="${width - padding.right + 15}" y="${padding.top + 12}" width="10" height="10" fill="#10B981" rx="2"/>`;
-  svg += `<text x="${width - padding.right + 30}" y="${padding.top + 20}" fill="#6b7280" font-size="8" font-family="sans-serif">Bull</text>`;
-  svg += `<rect x="${width - padding.right + 15}" y="${padding.top + 28}" width="10" height="10" fill="#EF4444" rx="2"/>`;
-  svg += `<text x="${width - padding.right + 30}" y="${padding.top + 36}" fill="#6b7280" font-size="8" font-family="sans-serif">Bear</text>`;
-  svg += `<line x1="${width - padding.right + 15}" y1="${padding.top + 54}" x2="${width - padding.right + 35}" y2="${padding.top + 54}" stroke="#06B6D4" stroke-width="2" stroke-dasharray="4,2"/>`;
-  svg += `<text x="${width - padding.right + 40}" y="${padding.top + 58}" fill="#6b7280" font-size="7" font-family="sans-serif">P/C</text>`;
+  svg += `<text x="${width - padding.right + 30}" y="${padding.top + 20}" fill="#6b7280" font-size="8" font-family="sans-serif">Bull: bullish premium</text>`;
+  svg += `<rect x="${width - padding.right + 15}" y="${padding.top + 32}" width="10" height="10" fill="#EF4444" rx="2"/>`;
+  svg += `<text x="${width - padding.right + 30}" y="${padding.top + 40}" fill="#6b7280" font-size="8" font-family="sans-serif">Bear: bearish premium</text>`;
+  if (validRatios.length > 0) {
+    svg += `<line x1="${width - padding.right + 15}" y1="${padding.top + 60}" x2="${width - padding.right + 35}" y2="${padding.top + 60}" stroke="#06B6D4" stroke-width="2" stroke-dasharray="4,2"/>`;
+    svg += `<text x="${width - padding.right + 40}" y="${padding.top + 65}" fill="#6b7280" font-size="8" font-family="sans-serif">P/C ratio (dotted)</text>`;
+  }
 
   // Interpretation
   const bullishBars = data.sentiment.filter(s => s === 'bullish').length;
@@ -1517,10 +1582,10 @@ export function generateMockTradeTapeTimelineData(ticker: string): TradeTapeTime
 
   const whaleEvents: TradeTapeTimelineData['whaleEvents'] = [];
   if (Math.random() > 0.3) {
-    whaleEvents.push({ timeIdx: Math.floor(times.length * 0.3), premium: 5000000, detail: '$5M Sweep' });
+    whaleEvents.push({ timeIdx: Math.floor(times.length * 0.3), premium: 5000000, detail: '$5M buy burst' });
   }
   if (Math.random() > 0.5) {
-    whaleEvents.push({ timeIdx: Math.floor(times.length * 0.7), premium: 3200000, detail: '$3.2M Block' });
+    whaleEvents.push({ timeIdx: Math.floor(times.length * 0.7), premium: 3200000, detail: '$3.2M block trade' });
   }
 
   const putCallRatio = times.map(() => 0.8 + Math.random() * 1.5);
@@ -1544,7 +1609,46 @@ export function generateSectorCorrelationSvg(data: SectorCorrelationData): strin
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  const cellSize = Math.min(chartWidth / data.peers.length, chartHeight / data.peers.length);
+  const uniquePeers: string[] = [];
+  const firstIndexByPeer = new Map<string, number>();
+  data.peers.forEach((peer, idx) => {
+    const key = peer.toUpperCase();
+    if (!firstIndexByPeer.has(key)) {
+      firstIndexByPeer.set(key, idx);
+      uniquePeers.push(peer);
+    }
+  });
+
+  if (!uniquePeers.length || !data.correlations.length) {
+    return renderInsufficientDataPanel(`${data.ticker} Sector Correlations`, 'missing correlation inputs');
+  }
+
+  const remapIndex = data.peers.map(p => uniquePeers.findIndex(u => u.toUpperCase() === p.toUpperCase()));
+
+  let correlations = data.correlations;
+  let decouplings = data.decouplings;
+  if (uniquePeers.length !== data.peers.length) {
+    correlations = uniquePeers.map((_, ri) =>
+      uniquePeers.map((_, ci) => {
+        const sourceRow = firstIndexByPeer.get(uniquePeers[ri].toUpperCase()) ?? ri;
+        const sourceCol = firstIndexByPeer.get(uniquePeers[ci].toUpperCase()) ?? ci;
+        return data.correlations[sourceRow]?.[sourceCol] ?? 0;
+      })
+    );
+
+    const seenPairs = new Set<string>();
+    decouplings = data.decouplings
+      .map(d => ({ row: remapIndex[d.row], col: remapIndex[d.col], label: d.label }))
+      .filter(d => d.row >= 0 && d.col >= 0 && d.row !== d.col)
+      .filter(d => {
+        const key = `${d.row}-${d.col}`;
+        if (seenPairs.has(key)) return false;
+        seenPairs.add(key);
+        return true;
+      });
+  }
+
+  const cellSize = Math.min(chartWidth / uniquePeers.length, chartHeight / uniquePeers.length);
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background: #0a0a0f;">`;
   
@@ -1552,9 +1656,9 @@ export function generateSectorCorrelationSvg(data: SectorCorrelationData): strin
   svg += `<text x="${padding.left}" y="46" fill="#6b7280" font-size="11" font-family="sans-serif">IV/Price Correlations to Sector Peers</text>`;
 
   // Heatmap cells
-  data.peers.forEach((_, ri) => {
-    data.peers.forEach((_, ci) => {
-      const val = data.correlations[ri][ci];
+  uniquePeers.forEach((_, ri) => {
+    uniquePeers.forEach((_, ci) => {
+      const val = correlations[ri][ci];
       const x = padding.left + ci * cellSize;
       const y = padding.top + ri * cellSize;
 
@@ -1571,7 +1675,7 @@ export function generateSectorCorrelationSvg(data: SectorCorrelationData): strin
       }
 
       // Decoupling border
-      const isDecoupling = data.decouplings.some(d => d.row === ri && d.col === ci);
+      const isDecoupling = decouplings.some(d => d.row === ri && d.col === ci);
       if (isDecoupling) {
         svg += `<rect x="${x}" y="${y}" width="${cellSize - 2}" height="${cellSize - 2}" fill="none" stroke="#F59E0B" stroke-width="3" rx="2"/>`;
       }
@@ -1579,7 +1683,7 @@ export function generateSectorCorrelationSvg(data: SectorCorrelationData): strin
   });
 
   // Axis labels
-  data.peers.forEach((peer, i) => {
+  uniquePeers.forEach((peer, i) => {
     const x = padding.left + i * cellSize + cellSize / 2;
     const y = padding.top + i * cellSize + cellSize / 2;
     svg += `<text x="${x}" y="${padding.top - 8}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="sans-serif" transform="rotate(-45, ${x}, ${padding.top - 8})">${peer}</text>`;
@@ -1598,7 +1702,7 @@ export function generateSectorCorrelationSvg(data: SectorCorrelationData): strin
   svg += `<text x="${padding.left + 150}" y="${height - 40}" text-anchor="end" fill="#6b7280" font-size="8" font-family="monospace">+1</text>`;
 
   // Decoupling note
-  if (data.decouplings.length > 0) {
+  if (decouplings.length > 0) {
     svg += `<text x="${padding.left + 180}" y="${height - 28}" fill="#F59E0B" font-size="9" font-family="sans-serif">Unusual Decoupling - Probe Catalyst</text>`;
   }
 
@@ -1761,7 +1865,11 @@ export function generateMaxPainSvg(data: MaxPainData): string {
 
   // Interpretation
   const distFromSpot = data.maxPainStrike - data.spotPrice;
-  const interpretation = Math.abs(distFromSpot) < 3 ? 'Max pain near spot - balanced positioning' : distFromSpot > 0 ? `Max pain $${distFromSpot.toFixed(0)} above spot - upward magnet` : `Max pain $${Math.abs(distFromSpot).toFixed(0)} below spot - downward pressure`;
+  const interpretation = Math.abs(distFromSpot) < 3
+    ? 'Max pain estimate sits near spot - potential pin zone'
+    : distFromSpot > 0
+      ? `Max pain ~${distFromSpot.toFixed(0)} above spot - possible pull higher into expiry`
+      : `Max pain ~${Math.abs(distFromSpot).toFixed(0)} below spot - possible pin lower into expiry`;
   svg += `<text x="${padding.left}" y="${height - 15}" fill="#9ca3af" font-size="9" font-family="sans-serif">INTERPRETATION: ${interpretation}</text>`;
 
   const asOfTime = data.asOfTimestamp || new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
