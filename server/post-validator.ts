@@ -634,7 +634,7 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
   if (/width=\"NaN\"|height=\"NaN\"/i.test(svgContent)) {
     errors.push('SVG contains NaN dimensions');
   }
-  
+
   if (errors.length > 0) {
     return {
       isValid: false,
@@ -645,7 +645,44 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
       value: errors
     };
   }
-  
+
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+}
+
+// ============================================================================
+// IV UNIT / SCALE VALIDATOR
+// ============================================================================
+
+/**
+ * Detect obviously corrupt IV scales where values are rendered as 1700%+
+ * instead of normalized decimals. This runs on SVG text content to catch
+ * presentation issues before publishing.
+ */
+export function validateIvUnitScale(svgContent: string, fieldName: string = 'ivUnits'): ValidationResult {
+  if (!svgContent) {
+    return { isValid: false, severity: 'error', code: 'INVALID_IV_UNITS', message: 'Missing SVG content', field: fieldName };
+  }
+
+  const percentMatches = Array.from(svgContent.matchAll(/([0-9]{1,4}(?:\.[0-9]+)?)%/g));
+  if (percentMatches.length === 0) {
+    return { isValid: true, severity: 'info', code: 'VALID', message: 'No IV percentages found' };
+  }
+
+  const maxPercent = Math.max(...percentMatches.map(m => parseFloat(m[1])));
+
+  // Anything above 500% is treated as a hard error – realistic implied
+  // vol should not exceed this range in normalized units.
+  if (!isFinite(maxPercent) || maxPercent > 500) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'INVALID_IV_UNITS',
+      message: `Detected implausible IV scale (${maxPercent.toFixed(1)}%) in ${fieldName}`,
+      field: fieldName,
+      value: { maxPercent }
+    };
+  }
+
   return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
 }
 
@@ -759,6 +796,14 @@ export function runValidationGate(
         errors.push(svgCheck);
       } else {
         warnings.push(svgCheck);
+      }
+    }
+
+    // Block corrupted IV scaling (e.g., 1700% labels) on volatility charts
+    if (chartType.toLowerCase().includes('volatility')) {
+      const ivScaleCheck = validateIvUnitScale(svg, chartType);
+      if (!ivScaleCheck.isValid) {
+        errors.push(ivScaleCheck);
       }
     }
   });
