@@ -13,12 +13,15 @@ import {
   validateNoSuspiciousStrings,
   validateNoGarbledLabels,
   validateSpotInRange,
+  validateStrikeCoverage,
   validateMaxPainInRange,
   validateArrayNoNaN,
   validateCopyLogic,
+  validateGammaSignConsistency,
   validateSvgContent,
   validateOptionsSwepEvent,
   validateDarkPoolEvent,
+  validateBreakevenPlausibility,
   validateNoPrintDirectionClaim,
   validateCrossPanelConsistency,
   validateExpiryConsistency,
@@ -304,6 +307,22 @@ testGroup('safePercentile', () => {
 });
 
 // ============================================================================
+// BREAKEVEN VALIDATION TESTS
+// ============================================================================
+
+testGroup('validateBreakevenPlausibility', () => {
+  const valid = validateBreakevenPlausibility(105, 100, 102);
+  assert(valid.isValid === true, 'accepts breakeven near strike and spot');
+
+  const farAway = validateBreakevenPlausibility(300, 100, 105);
+  assert(farAway.isValid === false, 'rejects implausible breakeven');
+  assert(farAway.code === 'BREAKEVEN_IMPLAUSIBLE', 'uses breakeven implausible code');
+
+  const missing = validateBreakevenPlausibility(undefined as any, 100, 105);
+  assert(missing.isValid === false, 'requires breakeven value');
+});
+
+// ============================================================================
 // EVENT VALIDATION TESTS
 // ============================================================================
 
@@ -380,6 +399,10 @@ testGroup('runValidationGate', () => {
     gammaExposure: '<svg><text>Valid gamma</text></svg>'
   };
 
+  const gammaStrikes = [140, 145, 150, 155, 160];
+  const ivStrikes = [140, 145, 150, 155, 160];
+  const oiStrikes = [140, 145, 150, 155, 160];
+
   const validResult = runValidationGate(
     'TSLA',
     'OPTIONS_SWEEP',
@@ -387,8 +410,12 @@ testGroup('runValidationGate', () => {
     validThread,
     validCharts,
     'call',
-    [140, 145, 150, 155, 160],
-    150
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    { volatilitySmile: '2025-01-17' },
+    'long'
   );
 
   assert(validResult.isPublishable === true, 'marks valid post as publishable');
@@ -407,8 +434,12 @@ testGroup('runValidationGate', () => {
     badCopyThread,
     validCharts,
     'call',
-    [140, 145, 150, 155, 160],
-    150
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
   );
 
   assert(badCopyResult.isPublishable === false, 'blocks post with wrong copy logic');
@@ -426,8 +457,12 @@ testGroup('runValidationGate', () => {
     validThread,
     nanCharts,
     'call',
-    [140, 145, 150, 155, 160],
-    150
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
   );
 
   assert(nanResult.isPublishable === false, 'blocks post with NaN in SVG');
@@ -445,8 +480,12 @@ testGroup('runValidationGate', () => {
     overclaim,
     validCharts,
     'call',
-    [140, 145, 150, 155, 160],
-    150
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
   );
 
   assert(overclaimResult.isPublishable === false, 'blocks dark pool overclaim');
@@ -460,10 +499,12 @@ testGroup('runValidationGate', () => {
     validThread,
     validCharts,
     'call',
-    [140, 145, 150, 155, 160],  // gamma strikes (center ~150)
+    gammaStrikes,               // gamma strikes (center ~150)
     150,                        // spot
     [200, 210, 220, 230],       // IV strikes (center ~215, >20% off)
-    []
+    [],
+    {},
+    'long'
   );
 
   assert(misalignedResult.isPublishable === false, 'blocks misaligned cross-panel strikes');
@@ -477,15 +518,77 @@ testGroup('runValidationGate', () => {
     validThread,
     validCharts,
     'call',
-    [140, 145, 150, 155, 160],
+    gammaStrikes,
     150,
     [],
     [],
-    { volatilitySmile: '2025-01-17' }  // Chart expiry in Jan 2025 (stale!)
+    { volatilitySmile: '2025-01-17' },  // Chart expiry in Jan 2025 (stale!)
+    'long'
   );
 
   assert(expiryMismatchResult.isPublishable === false, 'blocks mismatched chart expiries');
   assert(expiryMismatchResult.errors.some(e => e.code === 'EXPIRY_MISMATCH'), 'identifies expiry mismatch error');
+
+  // Test with implausible breakeven vs strike
+  const implausibleBreakeven = runValidationGate(
+    'SPY',
+    'OPTIONS_SWEEP',
+    { ...validMetrics, breakeven: 500 },
+    validThread,
+    validCharts,
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+
+  assert(implausibleBreakeven.isPublishable === false, 'blocks implausible breakeven');
+  assert(implausibleBreakeven.errors.some(e => e.code === 'BREAKEVEN_IMPLAUSIBLE'), 'flags breakeven issue');
+
+  // Test with sparse strikes near spot
+  const sparseStrikesResult = runValidationGate(
+    'QQQ',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    validThread,
+    validCharts,
+    'call',
+    [20, 400],
+    100,
+    [20, 400],
+    [],
+    {},
+    'long'
+  );
+
+  assert(sparseStrikesResult.isPublishable === false, 'blocks sparse strikes near spot');
+  assert(sparseStrikesResult.errors.some(e => e.code === 'STRIKE_COVERAGE_INSUFFICIENT'), 'identifies strike coverage gap');
+
+  // Test gamma sign mismatch between chart and thread content
+  const gammaMismatchThread = [
+    'Short gamma pocket could force acceleration.'
+  ];
+
+  const gammaMismatchResult = runValidationGate(
+    'MSFT',
+    'OPTIONS_SWEEP',
+    validMetrics,
+    gammaMismatchThread,
+    validCharts,
+    'call',
+    gammaStrikes,
+    150,
+    ivStrikes,
+    oiStrikes,
+    {},
+    'long'
+  );
+
+  assert(gammaMismatchResult.isPublishable === false, 'blocks gamma sign mismatch');
+  assert(gammaMismatchResult.errors.some(e => e.code === 'GAMMA_SIGN_MISMATCH'), 'identifies gamma mismatch');
 });
 
 // ============================================================================
@@ -619,6 +722,20 @@ testGroup('validateSpotInRange (blocking)', () => {
 });
 
 // ============================================================================
+// STRIKE COVERAGE TESTS
+// ============================================================================
+
+testGroup('validateStrikeCoverage', () => {
+  const strikes = [90, 95, 100, 105, 110, 115];
+  const valid = validateStrikeCoverage(strikes, 100);
+  assert(valid.isValid === true, 'accepts dense strikes around spot');
+
+  const sparse = validateStrikeCoverage([50, 200, 400], 100);
+  assert(sparse.isValid === false, 'rejects sparse strikes far from spot');
+  assert(sparse.code === 'STRIKE_COVERAGE_INSUFFICIENT', 'returns strike coverage error code');
+});
+
+// ============================================================================
 // EXPIRY CONSISTENCY TESTS
 // ============================================================================
 
@@ -644,6 +761,22 @@ testGroup('validateExpiryConsistency', () => {
   // Should pass when no chart expiry specified
   const noChartExpiry = validateExpiryConsistency('2026-03-31', undefined, 'volSmile');
   assert(noChartExpiry.isValid === true, 'accepts undefined chart expiry');
+});
+
+// ============================================================================
+// GAMMA SIGN CONSISTENCY TESTS
+// ============================================================================
+
+testGroup('validateGammaSignConsistency', () => {
+  const noGamma = validateGammaSignConsistency('Gamma discussed here', undefined);
+  assert(noGamma.isValid === true, 'skips when no modeled gamma provided');
+
+  const aligned = validateGammaSignConsistency('Modeled long gamma setup', 'long');
+  assert(aligned.isValid === true, 'accepts aligned gamma wording');
+
+  const mismatch = validateGammaSignConsistency('This is a short gamma pocket', 'long');
+  assert(mismatch.isValid === false, 'rejects gamma sign mismatch');
+  assert(mismatch.code === 'GAMMA_SIGN_MISMATCH', 'returns gamma mismatch code');
 });
 
 // ============================================================================

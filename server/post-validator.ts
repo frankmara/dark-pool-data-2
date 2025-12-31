@@ -113,9 +113,9 @@ export function validateNoNaN(value: number, fieldName: string): ValidationResul
 }
 
 export function validateNumberRange(
-  value: number, 
-  min: number, 
-  max: number, 
+  value: number,
+  min: number,
+  max: number,
   fieldName: string
 ): ValidationResult {
   if (isNaN(value) || value < min || value > max) {
@@ -133,6 +133,52 @@ export function validateNumberRange(
 
 export function validatePercentile(value: number, fieldName: string): ValidationResult {
   return validateNumberRange(value, 0, 100, fieldName);
+}
+
+export function validateBreakevenPlausibility(
+  breakeven: number | undefined,
+  strike?: number,
+  spot?: number,
+  fieldName: string = 'breakeven'
+): ValidationResult {
+  if (breakeven === undefined || breakeven === null) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'REQUIRED_FIELD_MISSING',
+      message: 'Breakeven is required for options events',
+      field: fieldName,
+      value: breakeven
+    };
+  }
+
+  if (isNaN(breakeven) || !isFinite(breakeven) || breakeven <= 0) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'NAN_VALUE',
+      message: 'Breakeven must be a positive, finite number',
+      field: fieldName,
+      value: breakeven
+    };
+  }
+
+  const anchors = [strike, spot].filter((n): n is number => n !== undefined && !isNaN(n) && isFinite(n) && n > 0);
+  for (const anchor of anchors) {
+    const deviation = Math.abs(breakeven - anchor) / anchor;
+    if (deviation > 0.6) {
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'BREAKEVEN_IMPLAUSIBLE',
+        message: `Breakeven $${breakeven} is implausible vs anchor $${anchor} (>60% away)`,
+        field: fieldName,
+        value: { breakeven, anchor, deviation: `${(deviation * 100).toFixed(1)}%` }
+      };
+    }
+  }
+
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
 }
 
 export function validateRequiredField(value: any, fieldName: string): ValidationResult {
@@ -182,8 +228,8 @@ export function validateNoGarbledLabels(text: string, fieldName: string): Valida
 }
 
 export function validateSpotInRange(
-  spot: number, 
-  strikes: number[], 
+  spot: number,
+  strikes: number[],
   fieldName: string = 'spot'
 ): ValidationResult {
   if (strikes.length === 0) {
@@ -214,6 +260,49 @@ export function validateSpotInRange(
       value: { spot, minStrike, maxStrike, rangeMidpoint }
     };
   }
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+}
+
+export function validateStrikeCoverage(
+  strikes: number[],
+  spot: number,
+  tolerance: number = 0.15,
+  minStrikes: number = 5,
+  fieldName: string = 'strikes'
+): ValidationResult {
+  if (!strikes || strikes.length === 0) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'EMPTY_STRIKES',
+      message: 'Strike array is empty - cannot render ladder near spot',
+      field: fieldName
+    };
+  }
+
+  if (!spot || !isFinite(spot)) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'INVALID_SPOT',
+      message: 'Spot must be a valid number to validate strike coverage',
+      field: 'spot',
+      value: spot
+    };
+  }
+
+  const nearSpot = strikes.filter(s => Math.abs(s - spot) / spot <= tolerance);
+  if (nearSpot.length < minStrikes) {
+    return {
+      isValid: false,
+      severity: 'error',
+      code: 'STRIKE_COVERAGE_INSUFFICIENT',
+      message: `Only ${nearSpot.length} strikes within ±${Math.round(tolerance * 100)}% of spot $${spot} (need ${minStrikes}+ for reliable ladder)`,
+      field: fieldName,
+      value: { spot, strikesNearSpot: nearSpot.slice(0, 10) }
+    };
+  }
+
   return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
 }
 
@@ -272,7 +361,7 @@ export function validateArrayNoNaN(arr: number[], fieldName: string): Validation
 // ============================================================================
 
 export function validateCopyLogic(
-  content: string, 
+  content: string,
   skewDirection: 'put' | 'call',
   fieldName: string = 'threadContent'
 ): ValidationResult {
@@ -314,6 +403,34 @@ export function validateCopyLogic(
     }
   }
   
+  return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+}
+
+export function validateGammaSignConsistency(
+  content: string,
+  modeledGamma: 'long' | 'short' | undefined,
+  fieldName: string = 'threadContent'
+): ValidationResult {
+  if (!modeledGamma) {
+    return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
+  }
+
+  const gammaPhrase = /gamma[^\n]{0,40}\b(long|short)\b|\b(long|short)\s+gamma/gi;
+  let match: RegExpExecArray | null;
+  while ((match = gammaPhrase.exec(content)) !== null) {
+    const mentioned = (match[1] || match[2] || '').toLowerCase();
+    if (mentioned && mentioned !== modeledGamma) {
+      return {
+        isValid: false,
+        severity: 'error',
+        code: 'GAMMA_SIGN_MISMATCH',
+        message: `Thread claims ${mentioned} gamma but chart data shows ${modeledGamma}`,
+        field: fieldName,
+        value: { modeledGamma, mentioned }
+      };
+    }
+  }
+
   return { isValid: true, severity: 'info', code: 'VALID', message: 'OK' };
 }
 
@@ -538,19 +655,21 @@ export function validateSvgContent(svgContent: string, chartType: string): Valid
 
 export function validateOptionsSwepEvent(metrics: EventMetrics): ValidationResult[] {
   const results: ValidationResult[] = [];
-  
+
   // Options sweep requires strike and expiry
   results.push(validateRequiredField(metrics.strike, 'strike'));
   results.push(validateRequiredField(metrics.expiry, 'expiry'));
   results.push(validateRequiredField(metrics.contracts, 'contracts'));
+  results.push(validateRequiredField(metrics.breakeven, 'breakeven'));
   
   if (metrics.strike) {
     results.push(validateNoNaN(metrics.strike, 'strike'));
     results.push(validateNumberRange(metrics.strike, 0.01, 100000, 'strike'));
   }
-  
+
   if (metrics.breakeven) {
     results.push(validateNoNaN(metrics.breakeven, 'breakeven'));
+    results.push(validateBreakevenPlausibility(metrics.breakeven, metrics.strike, metrics.price));
   }
   
   results.push(validatePercentile(metrics.percentile, 'percentile'));
@@ -601,7 +720,8 @@ export function runValidationGate(
   spot: number = 0,
   ivStrikes: number[] = [],
   oiStrikes: number[] = [],
-  chartExpiries: Record<string, string> = {} // Map of chartType -> expiry for expiry consistency checks
+  chartExpiries: Record<string, string> = {}, // Map of chartType -> expiry for expiry consistency checks
+  gammaExposurePosition?: 'long' | 'short'
 ): ValidationGateResult {
   const errors: ValidationResult[] = [];
   const warnings: ValidationResult[] = [];
@@ -619,10 +739,13 @@ export function runValidationGate(
     
     const garbledCheck = validateNoGarbledLabels(content, `thread[${i}]`);
     if (!garbledCheck.isValid) errors.push(garbledCheck);
-    
+
     const copyCheck = validateCopyLogic(content, skewDirection, `thread[${i}]`);
     if (!copyCheck.isValid) errors.push(copyCheck);
-    
+
+    const gammaSignCheck = validateGammaSignConsistency(content, gammaExposurePosition, `thread[${i}]`);
+    if (!gammaSignCheck.isValid) errors.push(gammaSignCheck);
+
     // P0: Validate no "print direction" overclaim in dark pool threads
     const overclaim = validateNoPrintDirectionClaim(content, eventType, `thread[${i}]`);
     if (!overclaim.isValid) errors.push(overclaim);
@@ -649,6 +772,11 @@ export function runValidationGate(
       } else {
         warnings.push(spotCheck);
       }
+    }
+
+    const strikeCoverageCheck = validateStrikeCoverage(strikes, spot);
+    if (!strikeCoverageCheck.isValid) {
+      errors.push(strikeCoverageCheck);
     }
   }
   
