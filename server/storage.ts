@@ -164,7 +164,13 @@ export class MemStorage implements IStorage {
 
     darkPoolItems.forEach(item => {
       const id = randomUUID();
-      this.darkPoolData.set(id, { id, ...item });
+      this.darkPoolData.set(id, {
+        id,
+        ...item,
+        timestamp: item.timestamp ?? null,
+        sentiment: item.sentiment ?? null,
+        flowType: item.flowType ?? null,
+      });
     });
 
     const optionsItems: InsertUnusualOptions[] = [
@@ -176,7 +182,7 @@ export class MemStorage implements IStorage {
 
     optionsItems.forEach(item => {
       const id = randomUUID();
-      this.unusualOptions.set(id, { id, ...item });
+      this.unusualOptions.set(id, { id, ...item, timestamp: item.timestamp ?? null });
     });
 
     const connectors: InsertApiConnector[] = [
@@ -190,7 +196,17 @@ export class MemStorage implements IStorage {
 
     connectors.forEach(connector => {
       const id = randomUUID();
-      this.apiConnectors.set(id, { id, ...connector, lastError: null, rateLimitRemaining: null, rateLimitReset: null });
+      this.apiConnectors.set(id, {
+        id,
+        ...connector,
+        status: connector.status ?? null,
+        provider: connector.provider ?? null,
+        lastSync: connector.lastSync ?? null,
+        config: connector.config ?? null,
+        lastError: null,
+        rateLimitRemaining: null,
+        rateLimitReset: null,
+      });
     });
 
     const posts: InsertPost[] = [
@@ -201,7 +217,21 @@ export class MemStorage implements IStorage {
 
     posts.forEach(post => {
       const id = randomUUID();
-      this.posts.set(id, { id, ...post, retweets: 0, likes: 0, replies: 0, scheduledAt: null, postedAt: null, tags: null });
+      this.posts.set(id, {
+        id,
+        content: post.content,
+        variant: post.variant ?? null,
+        status: post.status ?? null,
+        impressions: post.impressions ?? 0,
+        engagements: post.engagements ?? 0,
+        clicks: post.clicks ?? 0,
+        retweets: 0,
+        likes: 0,
+        replies: 0,
+        scheduledAt: null,
+        postedAt: null,
+        tags: null,
+      });
     });
 
     const workflowNodes: InsertWorkflowNode[] = [
@@ -391,7 +421,16 @@ export class MemStorage implements IStorage {
 
     workflowNodes.forEach((node, index) => {
       const id = (index + 1).toString();
-      this.workflowNodes.set(id, { id, ...node });
+      this.workflowNodes.set(id, {
+        id,
+        ...node,
+        icon: node.icon ?? null,
+        color: node.color ?? null,
+        active: node.active ?? null,
+        positionX: node.positionX ?? null,
+        positionY: node.positionY ?? null,
+        config: node.config ?? null,
+      });
     });
 
     const healthComponents = ["scanner", "llm_agent", "chart_gen", "poster"];
@@ -416,7 +455,14 @@ export class MemStorage implements IStorage {
 
     defaultAlerts.forEach((alert) => {
       const id = randomUUID();
-      this.alertRules.set(id, { id, ...alert });
+      this.alertRules.set(id, {
+        id,
+        ...alert,
+        enabled: alert.enabled ?? null,
+        threshold: alert.threshold ?? null,
+        channelIds: alert.channelIds ?? null,
+        config: alert.config ?? null,
+      });
     });
 
     const sampleLogs: InsertSystemLog[] = [
@@ -429,7 +475,12 @@ export class MemStorage implements IStorage {
 
     sampleLogs.forEach((log) => {
       const id = randomUUID();
-      this.systemLogs.set(id, { id, ...log });
+      this.systemLogs.set(id, {
+        id,
+        ...log,
+        message: log.message ?? null,
+        metadata: log.metadata ?? null,
+      });
     });
   }
 
@@ -514,7 +565,13 @@ export class MemStorage implements IStorage {
 
   async createDarkPoolData(data: InsertDarkPoolData): Promise<DarkPoolData> {
     const id = randomUUID();
-    const newData: DarkPoolData = { id, ...data };
+    const newData: DarkPoolData = {
+      id,
+      ...data,
+      timestamp: data.timestamp ?? null,
+      sentiment: data.sentiment ?? null,
+      flowType: data.flowType ?? null,
+    };
     this.darkPoolData.set(id, newData);
     return newData;
   }
@@ -525,7 +582,7 @@ export class MemStorage implements IStorage {
 
   async createUnusualOptions(data: InsertUnusualOptions): Promise<UnusualOptions> {
     const id = randomUUID();
-    const newData: UnusualOptions = { id, ...data };
+    const newData: UnusualOptions = { id, ...data, timestamp: data.timestamp ?? null };
     this.unusualOptions.set(id, newData);
     return newData;
   }
@@ -536,7 +593,16 @@ export class MemStorage implements IStorage {
 
   async createWorkflowNode(node: InsertWorkflowNode): Promise<WorkflowNode> {
     const id = randomUUID();
-    const newNode: WorkflowNode = { id, ...node };
+    const newNode: WorkflowNode = {
+      id,
+      ...node,
+      icon: node.icon ?? null,
+      color: node.color ?? null,
+      active: node.active ?? null,
+      positionX: node.positionX ?? null,
+      positionY: node.positionY ?? null,
+      config: node.config ?? null,
+    };
     this.workflowNodes.set(id, newNode);
     return newNode;
   }
@@ -582,7 +648,17 @@ export class MemStorage implements IStorage {
 
   async createApiConnector(connector: InsertApiConnector): Promise<ApiConnector> {
     const id = randomUUID();
-    const newConnector: ApiConnector = { id, ...connector, lastError: null, rateLimitRemaining: null, rateLimitReset: null };
+    const newConnector: ApiConnector = {
+      id,
+      ...connector,
+      status: connector.status ?? null,
+      provider: connector.provider ?? null,
+      lastSync: connector.lastSync ?? null,
+      config: connector.config ?? null,
+      lastError: null,
+      rateLimitRemaining: null,
+      rateLimitReset: null,
+    };
     this.apiConnectors.set(id, newConnector);
     return newConnector;
   }
@@ -605,7 +681,13 @@ export class MemStorage implements IStorage {
 
   async createAnalyticsData(data: InsertAnalyticsData): Promise<AnalyticsData> {
     const id = randomUUID();
-    const newData: AnalyticsData = { id, ...data };
+    const newData: AnalyticsData = {
+      id,
+      ...data,
+      change: data.change ?? null,
+      timestamp: data.timestamp ?? null,
+      period: data.period ?? null,
+    };
     this.analyticsData.set(id, newData);
     return newData;
   }
@@ -660,7 +742,33 @@ export class MemStorage implements IStorage {
 
   async createMarketEvent(event: InsertMarketEvent): Promise<MarketEvent> {
     const id = randomUUID();
-    const newEvent: MarketEvent = { id, ...event };
+    const newEvent: MarketEvent = {
+      id,
+      ...event,
+      metadata: event.metadata ?? null,
+      strike: event.strike ?? null,
+      side: event.side ?? null,
+      printSizeUsd: event.printSizeUsd ?? null,
+      volume: event.volume ?? null,
+      price: event.price ?? null,
+      venue: event.venue ?? null,
+      premium: event.premium ?? null,
+      contracts: event.contracts ?? null,
+      expiry: event.expiry ?? null,
+      optionType: event.optionType ?? null,
+      deltaExposure: event.deltaExposure ?? null,
+      gammaExposure: event.gammaExposure ?? null,
+      openInterest: event.openInterest ?? null,
+      oiChange: event.oiChange ?? null,
+      oiChangePercent: event.oiChangePercent ?? null,
+      advPercent: event.advPercent ?? null,
+      sentiment: event.sentiment ?? null,
+      flowType: event.flowType ?? null,
+      isBlock: event.isBlock ?? null,
+      isSweep: event.isSweep ?? null,
+      isDarkPool: event.isDarkPool ?? null,
+      signalStrength: event.signalStrength ?? null,
+    };
     this.marketEvents.set(id, newEvent);
     return newEvent;
   }
@@ -677,7 +785,12 @@ export class MemStorage implements IStorage {
 
   async createSystemLog(log: InsertSystemLog): Promise<SystemLog> {
     const id = randomUUID();
-    const newLog: SystemLog = { id, ...log };
+    const newLog: SystemLog = {
+      id,
+      ...log,
+      message: log.message ?? null,
+      metadata: log.metadata ?? null,
+    };
     this.systemLogs.set(id, newLog);
     if (this.systemLogs.size > 500) {
       const logs = Array.from(this.systemLogs.entries())
@@ -693,7 +806,12 @@ export class MemStorage implements IStorage {
 
   async createNotificationChannel(channel: InsertNotificationChannel): Promise<NotificationChannel> {
     const id = randomUUID();
-    const newChannel: NotificationChannel = { id, ...channel };
+    const newChannel: NotificationChannel = {
+      id,
+      ...channel,
+      enabled: channel.enabled ?? null,
+      config: channel.config ?? null,
+    };
     this.notificationChannels.set(id, newChannel);
     return newChannel;
   }
@@ -716,7 +834,14 @@ export class MemStorage implements IStorage {
 
   async createAlertRule(rule: InsertAlertRule): Promise<AlertRule> {
     const id = randomUUID();
-    const newRule: AlertRule = { id, ...rule };
+    const newRule: AlertRule = {
+      id,
+      ...rule,
+      enabled: rule.enabled ?? null,
+      threshold: rule.threshold ?? null,
+      channelIds: rule.channelIds ?? null,
+      config: rule.config ?? null,
+    };
     this.alertRules.set(id, newRule);
     return newRule;
   }
@@ -761,7 +886,30 @@ export class MemStorage implements IStorage {
 
   async createTestPost(post: InsertTestPost): Promise<TestPost> {
     const id = randomUUID();
-    const newPost: TestPost = { id, ...post };
+    const newPost: TestPost = {
+      id,
+      ...post,
+      variant: post.variant ?? null,
+      sentiment: post.sentiment ?? null,
+      conviction: post.conviction ?? null,
+      sourceEvent: post.sourceEvent ?? null,
+      engagement: post.engagement ?? null,
+      isLiveData: post.isLiveData ?? null,
+      chartSvg: post.chartSvg ?? null,
+      flowSummarySvg: post.flowSummarySvg ?? null,
+      volatilitySmileSvg: post.volatilitySmileSvg ?? null,
+      optionsFlowHeatmapSvg: post.optionsFlowHeatmapSvg ?? null,
+      putCallOILadderSvg: post.putCallOILadderSvg ?? null,
+      ivTermStructureSvg: post.ivTermStructureSvg ?? null,
+      gammaExposureSvg: post.gammaExposureSvg ?? null,
+      historicalVsImpliedVolSvg: post.historicalVsImpliedVolSvg ?? null,
+      greeksSurfaceSvg: post.greeksSurfaceSvg ?? null,
+      tradeTapeTimelineSvg: post.tradeTapeTimelineSvg ?? null,
+      sectorCorrelationSvg: post.sectorCorrelationSvg ?? null,
+      maxPainSvg: post.maxPainSvg ?? null,
+      ivRankHistogramSvg: post.ivRankHistogramSvg ?? null,
+      optionsStockVolumeSvg: post.optionsStockVolumeSvg ?? null,
+    };
     this.testPosts.set(id, newPost);
     return newPost;
   }

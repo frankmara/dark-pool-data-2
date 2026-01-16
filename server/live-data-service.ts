@@ -1,3 +1,7 @@
+import type { SnapshotInfo } from './run-artifacts';
+
+type PayloadSnapshotter = (name: string, payload: unknown) => Promise<SnapshotInfo> | SnapshotInfo;
+
 interface DarkPoolPrint {
   ticker: string;
   price: number;
@@ -38,7 +42,7 @@ interface TickerContext {
   tickerType?: string;
 }
 
-export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrint[], options: OptionsSweep[] }> {
+export async function fetchUnusualWhalesData(snapshotter?: PayloadSnapshotter): Promise<{ darkPool: DarkPoolPrint[], options: OptionsSweep[] }> {
   const apiKey = process.env.UNUSUAL_WHALES_API_KEY;
   if (!apiKey) {
     console.error("[UW] No Unusual Whales API key configured");
@@ -66,8 +70,13 @@ export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrin
     console.error("[UW] Dark Pool API status:", darkPoolRes.status);
     console.error("[UW] Options API status:", optionsRes.status);
     
-    const darkPoolRaw = darkPoolRes.ok ? await darkPoolRes.json() : { data: [] };
-    const optionsRaw = optionsRes.ok ? await optionsRes.json() : { data: [] };
+    const darkPoolRaw = darkPoolRes.ok ? await darkPoolRes.json() : { data: [], error: await darkPoolRes.text() };
+    const optionsRaw = optionsRes.ok ? await optionsRes.json() : { data: [], error: await optionsRes.text() };
+
+    if (snapshotter) {
+      await snapshotter('unusual_whales_dark_pool', { status: darkPoolRes.status, ok: darkPoolRes.ok, payload: darkPoolRaw });
+      await snapshotter('unusual_whales_options', { status: optionsRes.status, ok: optionsRes.ok, payload: optionsRaw });
+    }
     
     // Handle different response structures (array directly vs { data: [...] })
     const darkPoolData = Array.isArray(darkPoolRaw) ? darkPoolRaw : (darkPoolRaw.data || darkPoolRaw.result || []);
@@ -141,7 +150,7 @@ export async function fetchUnusualWhalesData(): Promise<{ darkPool: DarkPoolPrin
   }
 }
 
-export async function fetchPolygonQuote(ticker: string): Promise<TickerContext | null> {
+export async function fetchPolygonQuote(ticker: string, snapshotter?: PayloadSnapshotter): Promise<TickerContext | null> {
   const apiKey = process.env.POLYGON_API_KEY;
   if (!apiKey) return null;
 
@@ -155,6 +164,11 @@ export async function fetchPolygonQuote(ticker: string): Promise<TickerContext |
     
     const quoteData = await quoteRes.json();
     const detailsData = detailsRes.ok ? await detailsRes.json() : { results: {} };
+
+    if (snapshotter) {
+      await snapshotter(`polygon_quote_${ticker}`, { status: quoteRes.status, ok: quoteRes.ok, payload: quoteData });
+      await snapshotter(`polygon_details_${ticker}`, { status: detailsRes.status, ok: detailsRes.ok, payload: detailsData });
+    }
     
     const quote = quoteData.results?.[0];
     const details = detailsData.results || {};
@@ -310,7 +324,7 @@ export interface OptionsChainData {
 const optionsChainCache: Map<string, { data: OptionsChainData; timestamp: number }> = new Map();
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsChainData | null> {
+export async function fetchPolygonOptionsChain(ticker: string, snapshotter?: PayloadSnapshotter): Promise<OptionsChainData | null> {
   const apiKey = process.env.POLYGON_API_KEY;
   if (!apiKey) {
     console.error("[Polygon] No API key configured for options chain");
@@ -336,6 +350,10 @@ export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsC
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[Polygon] Options chain error: ${response.status} - ${errorText}`);
+
+      if (snapshotter) {
+        await snapshotter(`polygon_options_chain_${ticker}`, { status: response.status, ok: response.ok, payload: errorText });
+      }
       
       // Check if it's a subscription issue
       if (response.status === 403 || response.status === 401) {
@@ -345,6 +363,9 @@ export async function fetchPolygonOptionsChain(ticker: string): Promise<OptionsC
     }
 
     const data = await response.json();
+    if (snapshotter) {
+      await snapshotter(`polygon_options_chain_${ticker}`, { status: response.status, ok: response.ok, payload: data });
+    }
     const results = data.results || [];
     
     console.error(`[Polygon] Received ${results.length} options contracts for ${ticker}`);

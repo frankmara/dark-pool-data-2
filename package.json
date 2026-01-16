@@ -8,7 +8,11 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "generate": "tsx script/generate.ts",
+    "publish:dry": "tsx script/publish.ts --dryRun true",
+    "publish:live": "tsx script/publish.ts",
+    "test": "tsx server/post-validator.test.ts && tsx server/publish-gate.test.ts && tsx server/publish-flow.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
