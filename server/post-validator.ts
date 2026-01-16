@@ -798,7 +798,8 @@ export function runValidationGate(
   oiStrikes: number[] = [],
   chartExpiries: Record<string, string> = {}, // Map of chartType -> expiry for expiry consistency checks
   gammaExposurePosition?: 'long' | 'short',
-  chartQualityReports: Record<string, DataQualityReport> = {}
+  chartQualityReports: Record<string, DataQualityReport> = {},
+  requiredChartsOverride?: Array<{ key: string; alias?: string }>
 ): ValidationGateResult {
   const errors: ValidationResult[] = [];
   const warnings: ValidationResult[] = [];
@@ -853,7 +854,7 @@ export function runValidationGate(
   });
   
   // 3. Validate SVG charts (only the five high-confidence panels)
-  const requiredCharts: Array<{ key: string; alias?: string }> = [
+  const requiredCharts: Array<{ key: string; alias?: string }> = requiredChartsOverride || [
     { key: 'flowSummarySvg' },
     { key: 'optionsFlowHeatmapSvg' },
     { key: 'historicalVsImpliedVolSvg' },
